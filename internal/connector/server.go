@@ -48,17 +48,26 @@ func (s *Server) ConfigurationForm(ctx context.Context, req *pb.ConfigurationFor
 		Name:        "user",
 		Label:       "User",
 		Placeholder: stringPtr("user"),
-		Description: stringPtr("Input the user name for the SurrealDB instance"),
-		Required:    boolPtr(true),
-		Type:        &pb.FormField_TextField{TextField: pb.TextField_PlainText},
+		Description: stringPtr("User for user/pass authentication. Leave blank if using token authentication."),
+		Required:    boolPtr(false),
+		Type:        &pb.FormField_TextField{TextField: pb.TextField_Password},
 	})
 
 	fields = append(fields, &pb.FormField{
 		Name:        "pass",
 		Label:       "Password",
 		Placeholder: stringPtr("password"),
-		Description: stringPtr("Input the password for the SurrealDB instance"),
-		Required:    boolPtr(true),
+		Description: stringPtr("Pass for user/pass authentication. Leave blank if using token authentication."),
+		Required:    boolPtr(false),
+		Type:        &pb.FormField_TextField{TextField: pb.TextField_Password},
+	})
+
+	fields = append(fields, &pb.FormField{
+		Name:        "token",
+		Label:       "Token",
+		Placeholder: stringPtr("token"),
+		Description: stringPtr("Token for token authentication. Leave blank if using user/pass authentication."),
+		Required:    boolPtr(false),
 		Type:        &pb.FormField_TextField{TextField: pb.TextField_Password},
 	})
 
