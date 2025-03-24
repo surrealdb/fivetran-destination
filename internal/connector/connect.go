@@ -25,17 +25,21 @@ func (s *Server) connect(cfg config, schema string) (*surrealdb.DB, error) {
 		return nil, fmt.Errorf("failed to use namespace %s: %w", cfg.ns, err)
 	}
 
-	token, err := db.SignIn(&surrealdb.Auth{
-		Username: cfg.user,
-		Password: cfg.pass,
-		// Use `Use` instead of setting `Namespace` and `Database` here.
-		// Otherwise, you end up with: failed to sign in to SurrealDB: namespace or database or both are not set
-		// Probably related to https://github.com/surrealdb/surrealdb.node/issues/26#issuecomment-2057102554
-		// Namespace: cfg.ns,
-		// Database:  cfg.db,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign in to SurrealDB: %w", err)
+	token := cfg.token
+
+	if token == "" {
+		token, err = db.SignIn(&surrealdb.Auth{
+			Username: cfg.user,
+			Password: cfg.pass,
+			// Use `Use` instead of setting `Namespace` and `Database` here.
+			// Otherwise, you end up with: failed to sign in to SurrealDB: namespace or database or both are not set
+			// Probably related to https://github.com/surrealdb/surrealdb.node/issues/26#issuecomment-2057102554
+			// Namespace: cfg.ns,
+			// Database:  cfg.db,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to sign in to SurrealDB: %w", err)
+		}
 	}
 
 	// If you end up panicking here like `panic: cbor: 18 bytes of extraneous data starting at index 21`,

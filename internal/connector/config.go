@@ -7,6 +7,9 @@ type config struct {
 	user string
 	pass string
 	ns   string
+
+	// either user/pass or token needs to be set
+	token string
 }
 
 func (c *config) validate() error {
@@ -15,14 +18,14 @@ func (c *config) validate() error {
 	if c.url == "" {
 		missingFields = append(missingFields, "url")
 	}
-	if c.user == "" {
-		missingFields = append(missingFields, "user")
-	}
-	if c.pass == "" {
-		missingFields = append(missingFields, "pass")
-	}
 	if c.ns == "" {
 		missingFields = append(missingFields, "ns")
+	}
+
+	if c.token == "" {
+		if c.user == "" || c.pass == "" {
+			return fmt.Errorf("either token or user/pass needs to be set")
+		}
 	}
 
 	if len(missingFields) > 0 {
