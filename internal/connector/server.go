@@ -427,6 +427,7 @@ func (s *Server) WriteBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb
 
 // Reads CSV files and replaces existing records accordingly.
 func (s *Server) batchReplace(db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteBatchRequest) error {
+	unmodifiedString := req.FileParams.UnmodifiedString
 	return s.processCSVRecords(req.ReplaceFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
 		log.Printf("  Replacing record: %v %v", columns, record)
 
@@ -439,6 +440,11 @@ func (s *Server) batchReplace(db *surrealdb.DB, fields map[string]columnInfo, re
 
 		vars := map[string]interface{}{}
 		for k, v := range values {
+			if unmodifiedString != "" && v == unmodifiedString {
+				log.Printf("  Skipping column %s with value %s", k, v)
+				continue
+			}
+
 			f, ok := fields[k]
 			if !ok {
 				return fmt.Errorf("column %s not found in the table info: %v", k, fields)
@@ -465,7 +471,7 @@ func (s *Server) batchReplace(db *surrealdb.DB, fields map[string]columnInfo, re
 			return err
 		}
 
-		log.Printf("  Upserted record: %v %v", res.Result.ID, res.Result.Result)
+		log.Printf("  Replced record: %+v", res)
 
 		return nil
 	})
@@ -473,8 +479,52 @@ func (s *Server) batchReplace(db *surrealdb.DB, fields map[string]columnInfo, re
 
 // Reads CSV files and updates existing records accordingly.
 func (s *Server) batchUpdate(db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteBatchRequest) error {
+	unmodifiedString := req.FileParams.UnmodifiedString
 	return s.processCSVRecords(req.UpdateFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
 		log.Printf("  Updating record: %v %v", columns, record)
+
+		values := make(map[string]string)
+		for i, column := range columns {
+			values[column] = record[i]
+		}
+
+		thing := fmt.Sprintf("%s:%s", req.Table.Name, values["_fivetran_id"])
+
+		vars := map[string]interface{}{}
+		for k, v := range values {
+			if unmodifiedString != "" && v == unmodifiedString {
+				log.Printf("  Skipping column %s with value %s", k, v)
+				continue
+			}
+
+			f, ok := fields[k]
+			if !ok {
+				return fmt.Errorf("column %s not found in the table info: %v", k, fields)
+			}
+
+			var typedV interface{}
+
+			typedV, err := f.strToSurrealType(v)
+			if err != nil {
+				return fmt.Errorf("unable to convert value %s to surreal type %+v: %w", v, f, err)
+			}
+
+			vars[k] = typedV
+		}
+
+		type UpsertResponse struct {
+			ID     int                    `json:"id"`
+			Result map[string]interface{} `json:"result"`
+		}
+		var res connection.RPCResponse[UpsertResponse]
+
+		err := db.Send(&res, "upsert", thing, vars)
+		if err != nil {
+			return err
+		}
+
+		log.Printf("  Updated record: %+v", res)
+
 		return nil
 	})
 }
@@ -483,6 +533,27 @@ func (s *Server) batchUpdate(db *surrealdb.DB, fields map[string]columnInfo, req
 func (s *Server) batchDelete(db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteBatchRequest) error {
 	return s.processCSVRecords(req.DeleteFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
 		log.Printf("  Deleting record: %v %v", columns, record)
+
+		values := make(map[string]string)
+		for i, column := range columns {
+			values[column] = record[i]
+		}
+
+		thing := fmt.Sprintf("%s:%s", req.Table.Name, values["_fivetran_id"])
+
+		type DeleteResponse struct {
+			ID     int                    `json:"id"`
+			Result map[string]interface{} `json:"result"`
+		}
+		var res connection.RPCResponse[DeleteResponse]
+
+		err := db.Send(&res, "delete", thing)
+		if err != nil {
+			return fmt.Errorf("unable to delete record %s: %w", thing, err)
+		}
+
+		log.Printf("  Deleted record: %+v", res)
+
 		return nil
 	})
 }

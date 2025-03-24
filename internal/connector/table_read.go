@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
+	"github.com/surrealdb/surrealdb.go"
 )
 
 type tableInfo struct {
@@ -59,58 +60,42 @@ func (s *Server) infoForTable(schemaName string, tableName string, configuration
 
 	query := fmt.Sprintf(`INFO FOR TABLE %s;`, tableName)
 
-	m := map[string]interface{}{}
-	if err := db.Send(&m, "query", query); err != nil {
+	info, err := surrealdb.Query[InfoForTableResult](db, query, nil)
+	if err != nil {
 		return tableInfo{}, err
 	}
 
-	log.Printf("INFO FOR TABLE %s: %v", tableName, m)
+	first := (*info)[0]
 
-	fields, ok := m["fields"].([]string)
-	if !ok {
-		// New table without any fields
-		return tableInfo{}, nil
-	}
+	fields := first.Result.Fields
+
+	log.Printf("INFO FOR TABLE %s: %v", tableName, fields)
 
 	columns := []columnInfo{}
+
 	for _, field := range fields {
-		i := strings.Index(field, "TYPE")
-		if i == -1 {
-			return tableInfo{}, fmt.Errorf("invalid field: %s", field)
-		}
+		field = strings.TrimPrefix(field, "DEFINE FIELD ")
+		s := strings.Split(field, " ")
+		l := s[0]
+		rr := strings.Split(field, " TYPE ")
+		r := strings.Split(rr[1], " ")[0]
 
-		// the right part is the column name
-		tpeStart := strings.Index(field[i:], " ") + i + 1
-		if tpeStart < i+1 {
-			return tableInfo{}, fmt.Errorf("invalid field: %s", field)
-		}
-
-		tpeEnd := strings.Index(field[tpeStart:], " ") + tpeStart
-		if tpeEnd < tpeStart {
-			return tableInfo{}, fmt.Errorf("invalid field: %s", field)
-		}
-
-		tpe := field[tpeStart:tpeEnd]
-
-		// the left part is the column name
-		colEnd := strings.Index(field[:i], " ")
-		if colEnd == -1 {
-			return tableInfo{}, fmt.Errorf("invalid field: %s", field)
-		}
-
-		colStart := strings.LastIndex(field[:colEnd], " ") + 1
-		if colStart > colEnd {
-			return tableInfo{}, fmt.Errorf("invalid field: %s", field)
-		}
-
-		col := field[colStart:colEnd]
+		name := l
+		tpe := r
 
 		columns = append(columns, columnInfo{
-			Name:       col,
-			Type:       tpe,
-			PrimaryKey: col == "id",
+			Name: name,
+			Type: tpe,
 		})
 	}
+
+	columns = append(columns, columnInfo{
+		Name:       "id",
+		Type:       "string",
+		PrimaryKey: true,
+	})
+
+	log.Printf("COLUMNS: %v", columns)
 
 	return tableInfo{
 		columns: columns,
@@ -131,10 +116,12 @@ func (s *Server) columnsFromSurrealToFivetran(sColumns []columnInfo) ([]*pb.Colu
 			pbDataType = pb.DataType_FLOAT
 		case "double":
 			pbDataType = pb.DataType_DOUBLE
-		case "boolean":
+		case "bool":
 			pbDataType = pb.DataType_BOOLEAN
+		case "datetime":
+			pbDataType = pb.DataType_UTC_DATETIME
 		default:
-			return nil, fmt.Errorf("unsupported data type: %s", c.Type)
+			return nil, fmt.Errorf("columnsFromSurrealToFivetran: unsupported data type: %s", c.Type)
 		}
 		ftColumns = append(ftColumns, &pb.Column{
 			Name: c.Name,
