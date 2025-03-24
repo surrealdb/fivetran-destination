@@ -24,17 +24,16 @@ The connector requires the following configuration:
 
 ```json
 {
-    "host": "localhost",
-    "port": 8000,
-    "username": "root",
-    "password": "root",
-    "namespace": "test",
-    "database": "test",
-    "batch_size": 1000,              // Optional: number of records per batch
-    "create_tables": true,           // Optional: automatically create tables
-    "schema_evolution": true         // Optional: handle schema changes
+    "url": "ws://localhost:8000/rpc",
+    "user": "root",
+    "pass": "root",
+    "ns": "test"
 }
 ```
+
+The configuration is exposed via the connector's ConfigurationForm API and should be provided by the end user.
+
+In near future, we will support token-based authentication, too.
 
 ## Development
 
@@ -87,8 +86,6 @@ Automatic mapping between Fivetran and SurrealDB data types:
 | NUMBER        | number         |
 | BOOLEAN       | bool           |
 | TIMESTAMP     | datetime       |
-| ARRAY         | array          |
-| OBJECT        | object         |
 
 ### Error Handling
 
