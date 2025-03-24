@@ -1,4 +1,4 @@
-package main
+package connector
 
 import (
 	"bytes"
@@ -169,12 +169,20 @@ func (b *BlockReadCloser) readOn() error {
 		b.remainingFileLen -= int64(read)
 
 		if b.remainingFileLen == 0 {
-			// Trim trailing zeros added to make the data a multiple of the block size.
-			// Otherwise, the redundant zeroes might be read by the reader and
-			// cause errors, like downstream zstd decompression errors due to magic number mismatch.
-			b.decryptionBuf = bytes.TrimRight(b.decryptionBuf[:read], "\x00")
+			paddingLen := b.decryptionBuf[read-1]
+			b.decryptionBuf = b.decryptionBuf[:read-int(paddingLen)]
+			b.bufLen = read - int(paddingLen)
+
+			// NOTE: Apparently the below is not how Fivetran do padding.
+			//
+			// // Trim trailing zeros added to make the data a multiple of the block size.
+			// // Otherwise, the redundant zeroes might be read by the reader and
+			// // cause errors, like downstream zstd decompression errors due to magic number mismatch.
+			// b.decryptionBuf = bytes.TrimRight(b.decryptionBuf[:read], "\x00")
+			// b.bufLen = len(b.decryptionBuf)
+		} else {
+			b.bufLen = read
 		}
-		b.bufLen = len(b.decryptionBuf)
 
 		if b.debugging() {
 			log.Printf("Decrypted %d bytes of %v after unpadding", b.bufLen, b.decryptionBuf[:b.bufLen])
@@ -215,16 +223,18 @@ func (z *ZstdReadCloser) Read(p []byte) (int, error) {
 		z.zstdReadCloser = reader.IOReadCloser()
 	}
 
-	n, err := z.zstdReadCloser.Read(p)
-	if n > 0 {
-		return n, nil
-	}
+	return z.zstdReadCloser.Read(p)
 
-	if err != nil && !errors.Is(err, io.EOF) {
-		return 0, fmt.Errorf("failed to read zstd reader: %w", err)
-	}
+	// n, err := z.zstdReadCloser.Read(p)
+	// if n > 0 {
+	// 	return n, nil
+	// }
 
-	return 0, err
+	// if err != nil && !errors.Is(err, io.EOF) {
+	// 	return 0, fmt.Errorf("failed to read zstd reader: %w", err)
+	// }
+
+	// return 0, err
 }
 
 func (z *ZstdReadCloser) Close() error {
