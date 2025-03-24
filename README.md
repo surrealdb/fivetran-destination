@@ -6,10 +6,8 @@ This connector enables Fivetran to write data to SurrealDB tables. It implements
 
 - Writes data to SurrealDB tables
 - Supports batch operations
-- Handles schema changes
+- Handles schema changes (Note though schema changes in SurrealDB are metadata-only)
 - Provides data type mapping
-- Implements efficient write operations
-- Supports upsert and delete operations
 
 ## Architecture
 
@@ -86,6 +84,9 @@ Automatic mapping between Fivetran and SurrealDB data types:
 | NUMBER        | number         |
 | BOOLEAN       | bool           |
 | TIMESTAMP     | datetime       |
+
+See [mapping.go](https://github.com/surrealdb/fivetran-destination/blob/main/internal/connector/mapping.go)
+for the full list of mappings.
 
 ### Error Handling
 
