@@ -1,6 +1,8 @@
 # SurrealDB Destination Connector for Fivetran
 
-This connector enables Fivetran to write data to SurrealDB tables. It implements the Fivetran Destination Connector SDK using gRPC.
+This is a Fivetran [partner-built destination connector](https://fivetran.com/docs/partner-built-program#destinationconnector) for SurrealDB.
+
+The connector enables Fivetran to write data to SurrealDB tables. It implements the Fivetran Destination Connector SDK using gRPC.
 
 ## Features
 
@@ -76,7 +78,7 @@ The connector handles different types of write operations:
 
 ### Data Type Mapping
 
-Automatic mapping between Fivetran and SurrealDB data types:
+Automatic mapping between Fivetran and [SurrealDB data types](https://surrealdb.com/docs/surrealql/datamodel#data-types):
 
 | Fivetran Type | SurrealDB Type |
 |---------------|----------------|
