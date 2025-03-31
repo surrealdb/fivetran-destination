@@ -1,6 +1,6 @@
-.PHONY: all build test clean generate download-protos
+.PHONY: all build test clean generate download-protos test-destination
 
-all: generate build test
+all: generate build test test-destination
 
 download-protos:
 	mkdir -p proto
@@ -19,6 +19,10 @@ build:
 
 test:
 	go test ./...
+
+test-destination:
+	@echo "Running destination connector conformance tests..."
+	@cd tests && ./destination-connector-test.sh
 
 clean:
 	rm -rf bin/

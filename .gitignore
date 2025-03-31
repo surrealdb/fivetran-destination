@@ -1,2 +1,4 @@
 /bin
 /fivetran-destination
+/tests/destination-data/*.csv.zstd.aes
+/tests/destination-data/input_case*.json

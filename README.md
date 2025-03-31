@@ -42,6 +42,7 @@ In near future, we will support token-based authentication, too.
 - Go 1.21 or later
 - Protocol Buffers compiler (protoc)
 - SurrealDB instance for testing
+- Docker (for running conformance tests)
 
 ### Building
 
@@ -52,9 +53,13 @@ go build -o bin/connector
 
 ### Testing
 
+#### Unit Tests
 ```bash
 go test ./...
 ```
+
+#### Conformance Tests
+The connector includes a comprehensive set of conformance tests that verify its behavior against Fivetran's requirements. See [tests/README.md](tests/README.md) for detailed instructions on running these tests.
 
 ### Running Locally
 
