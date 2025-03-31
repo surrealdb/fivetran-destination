@@ -10,6 +10,7 @@ import (
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
 	"github.com/surrealdb/surrealdb.go"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 	_ "google.golang.org/grpc/encoding/gzip" // Register the gzip compressor
 )
 
@@ -319,15 +320,19 @@ func (s *Server) AlterTable(ctx context.Context, req *pb.AlterTableRequest) (*pb
 func (s *Server) Truncate(ctx context.Context, req *pb.TruncateRequest) (*pb.TruncateResponse, error) {
 	if s.debugging() {
 		log.Printf("Truncate called for schema: %s, table: %s", req.SchemaName, req.TableName)
-		// SyncedColumn is e.g. `_sivetran_synced`
+		// SyncedColumn is e.g. `_sivetran_synced` which is timestamp-like column/field
 		log.Printf("  SyncedColumn: %s", req.SyncedColumn)
 		if req.Soft != nil {
-			// DeletedColumn is e.g. `_sivetran_deleted`
+			// DeletedColumn is e.g. `_sivetran_deleted` which is bool-like column/field
 			log.Printf("  Soft.DeletedColumn: %s", req.Soft.DeletedColumn)
 		}
 		if req.UtcDeleteBefore != nil {
 			log.Printf("  UtcDeleteBefore: %s", req.UtcDeleteBefore.AsTime().Format(time.RFC3339))
 		}
+
+		// You usually do something like:
+		//   SOFT DELETE:  `UPDATE <table> SET _fivetran_deleted = true WHERE _fivetran_synced <= <UtcDeleteBefore>`
+		//   HARD DELETE:  `DELETE FROM <table> WHERE _fivetran_synced <= <UtcDeleteBefore>`
 	}
 
 	return &pb.TruncateResponse{
@@ -376,6 +381,10 @@ func (s *Server) WriteBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb
 	}
 	defer db.Close()
 
+	if s.debugging() {
+		log.Printf("WriteBatch using namespace %s and database %s", cfg.ns, req.SchemaName)
+	}
+
 	tb, err := s.infoForTable(req.SchemaName, req.Table.Name, req.Configuration)
 	if err != nil {
 		return &pb.WriteBatchResponse{
@@ -393,7 +402,7 @@ func (s *Server) WriteBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb
 		fields[column.Name] = column
 	}
 
-	if err := s.batchReplace(db, fields, req); err != nil {
+	if err := s.batchReplace(db, fields, req.ReplaceFiles, req.FileParams, req.Keys, req.Table); err != nil {
 		return &pb.WriteBatchResponse{
 			// success, warning, task
 			Response: &pb.WriteBatchResponse_Warning{
@@ -435,9 +444,9 @@ func (s *Server) WriteBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb
 }
 
 // Reads CSV files and replaces existing records accordingly.
-func (s *Server) batchReplace(db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteBatchRequest) error {
-	unmodifiedString := req.FileParams.UnmodifiedString
-	return s.processCSVRecords(req.ReplaceFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
+func (s *Server) batchReplace(db *surrealdb.DB, fields map[string]columnInfo, replaceFiles []string, fileParams *pb.FileParams, keys map[string][]byte, table *pb.Table) error {
+	unmodifiedString := fileParams.UnmodifiedString
+	return s.processCSVRecords(replaceFiles, fileParams, keys, func(columns []string, record []string) error {
 		log.Printf("  Replacing record: %v %v", columns, record)
 
 		values := make(map[string]string)
@@ -445,7 +454,16 @@ func (s *Server) batchReplace(db *surrealdb.DB, fields map[string]columnInfo, re
 			values[column] = record[i]
 		}
 
-		thing := fmt.Sprintf("%s:%s", req.Table.Name, values["_fivetran_id"])
+		var id any
+		if v, ok := values["_fivetran_id"]; ok {
+			id = v
+		} else if v, ok := values["id"]; ok {
+			id = v
+		} else {
+			return fmt.Errorf("id nor _fivetran_id not found in the record: %v", values)
+		}
+
+		thing := models.NewRecordID(table.Name, id)
 
 		vars := map[string]interface{}{}
 		for k, v := range values {
@@ -454,9 +472,19 @@ func (s *Server) batchReplace(db *surrealdb.DB, fields map[string]columnInfo, re
 				continue
 			}
 
+			if k == "id" {
+				log.Printf("Skipping id")
+				continue
+			}
+
 			f, ok := fields[k]
 			if !ok {
 				return fmt.Errorf("column %s not found in the table info: %v", k, fields)
+			}
+
+			if v == fileParams.NullString {
+				vars[k] = models.None
+				continue
 			}
 
 			var typedV interface{}
@@ -469,18 +497,12 @@ func (s *Server) batchReplace(db *surrealdb.DB, fields map[string]columnInfo, re
 			vars[k] = typedV
 		}
 
-		type UpsertResponse struct {
-			ID     int                    `json:"id"`
-			Result map[string]interface{} `json:"result"`
-		}
-		var res connection.RPCResponse[UpsertResponse]
-
-		err := db.Send(&res, "upsert", thing, vars)
+		res, err := surrealdb.Upsert[any](db, thing, vars)
 		if err != nil {
-			return err
+			return fmt.Errorf("unable to upsert record %s: %w", thing, err)
 		}
 
-		log.Printf("  Replced record: %+v", res)
+		log.Printf("  Replaced record %s with %v: %+v", thing, vars, *res)
 
 		return nil
 	})
@@ -489,6 +511,7 @@ func (s *Server) batchReplace(db *surrealdb.DB, fields map[string]columnInfo, re
 // Reads CSV files and updates existing records accordingly.
 func (s *Server) batchUpdate(db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteBatchRequest) error {
 	unmodifiedString := req.FileParams.UnmodifiedString
+
 	return s.processCSVRecords(req.UpdateFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
 		log.Printf("  Updating record: %v %v", columns, record)
 
@@ -521,18 +544,12 @@ func (s *Server) batchUpdate(db *surrealdb.DB, fields map[string]columnInfo, req
 			vars[k] = typedV
 		}
 
-		type UpsertResponse struct {
-			ID     int                    `json:"id"`
-			Result map[string]interface{} `json:"result"`
-		}
-		var res connection.RPCResponse[UpsertResponse]
-
-		err := db.Send(&res, "upsert", thing, vars)
+		res, err := surrealdb.Upsert[any](db, thing, vars)
 		if err != nil {
 			return err
 		}
 
-		log.Printf("  Updated record: %+v", res)
+		log.Printf("  Updated record %s with %v: %+v", thing, vars, *res)
 
 		return nil
 	})
@@ -561,7 +578,7 @@ func (s *Server) batchDelete(db *surrealdb.DB, fields map[string]columnInfo, req
 			return fmt.Errorf("unable to delete record %s: %w", thing, err)
 		}
 
-		log.Printf("  Deleted record: %+v", res)
+		log.Printf("  Deleted record %s: %+v", thing, res)
 
 		return nil
 	})
@@ -571,6 +588,89 @@ func (s *Server) WriteHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 	log.Printf("WriteHistoryBatch called for schema: %s, table: %s", req.SchemaName, req.Table.Name)
 	log.Printf("  Earliest start files: %d, Replace files: %d, Update files: %d, Delete files: %d",
 		len(req.EarliestStartFiles), len(req.ReplaceFiles), len(req.UpdateFiles), len(req.DeleteFiles))
+	log.Printf("  FileParams.Compression: %v", req.FileParams.Compression)
+	log.Printf("  FileParams.Encryption: %v", req.FileParams.Encryption)
+	log.Printf("  FileParams.NullString: %v", req.FileParams.NullString)
+	log.Printf("  FileParams.UnmodifiedString: %v", req.FileParams.UnmodifiedString)
+
+	cfg, err := s.parseConfig(req.Configuration)
+	if err != nil {
+		return &pb.WriteBatchResponse{
+			// success, warning, task
+			Response: &pb.WriteBatchResponse_Warning{
+				Warning: &pb.Warning{
+					Message: err.Error(),
+				},
+			},
+		}, err
+	}
+
+	db, err := s.connect(cfg, req.SchemaName)
+	if err != nil {
+		return &pb.WriteBatchResponse{
+			// success, warning, task
+			Response: &pb.WriteBatchResponse_Warning{
+				Warning: &pb.Warning{
+					Message: err.Error(),
+				},
+			},
+		}, err
+	}
+	defer db.Close()
+
+	if s.debugging() {
+		log.Printf("WriteHistoryBatch using namespace %s and database %s", cfg.ns, req.SchemaName)
+	}
+
+	tb, err := s.infoForTable(req.SchemaName, req.Table.Name, req.Configuration)
+	if err != nil {
+		return &pb.WriteBatchResponse{
+			// success, warning, task
+			Response: &pb.WriteBatchResponse_Warning{
+				Warning: &pb.Warning{
+					Message: err.Error(),
+				},
+			},
+		}, err
+	}
+
+	fields := make(map[string]columnInfo)
+	for _, column := range tb.columns {
+		fields[column.Name] = column
+	}
+
+	if err := s.batchReplace(db, fields, req.ReplaceFiles, req.FileParams, req.Keys, req.Table); err != nil {
+		return &pb.WriteBatchResponse{
+			// success, warning, task
+			Response: &pb.WriteBatchResponse_Warning{
+				Warning: &pb.Warning{
+					Message: err.Error(),
+				},
+			},
+		}, err
+	}
+
+	// if err := s.batchUpdate(db, fields, req); err != nil {
+	// 	return &pb.WriteBatchResponse{
+	// 		// success, warning, task
+	// 		Response: &pb.WriteBatchResponse_Warning{
+	// 			Warning: &pb.Warning{
+	// 				Message: err.Error(),
+	// 			},
+	// 		},
+	// 	}, err
+	// }
+
+	// if err := s.batchDelete(db, fields, req); err != nil {
+	// 	return &pb.WriteBatchResponse{
+	// 		// success, warning, task
+	// 		Response: &pb.WriteBatchResponse_Warning{
+	// 			Warning: &pb.Warning{
+	// 				Message: err.Error(),
+	// 			},
+	// 		},
+	// 	}, err
+	// }
 
 	return &pb.WriteBatchResponse{
 		Response: &pb.WriteBatchResponse_Success{

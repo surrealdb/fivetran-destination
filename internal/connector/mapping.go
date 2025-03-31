@@ -91,7 +91,7 @@ var typeMappings = []typeMapping{
 }
 
 func (s *Server) defineFieldQueryFromFt(tb string, c *pb.Column) (string, error) {
-	t := `DEFINE FIELD %s on %s TYPE %s;`
+	t := `DEFINE FIELD %s on %s TYPE option<%s>;`
 
 	var sdb string
 	for _, m := range typeMappings {

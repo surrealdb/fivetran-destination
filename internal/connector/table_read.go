@@ -17,6 +17,7 @@ type columnInfo struct {
 	Name       string
 	Type       string
 	PrimaryKey bool
+	Optional   bool
 }
 
 func (c *columnInfo) strToSurrealType(v string) (interface{}, error) {
@@ -83,17 +84,25 @@ func (s *Server) infoForTable(schemaName string, tableName string, configuration
 		name := l
 		tpe := r
 
+		var optional bool
+		if strings.HasPrefix(tpe, "option<") {
+			tpe = strings.TrimPrefix(tpe, "option<")
+			tpe = strings.TrimSuffix(tpe, ">")
+			optional = true
+		}
+
 		columns = append(columns, columnInfo{
-			Name: name,
-			Type: tpe,
+			Name:     name,
+			Type:     tpe,
+			Optional: optional,
 		})
 	}
 
-	columns = append(columns, columnInfo{
-		Name:       "id",
-		Type:       "string",
-		PrimaryKey: true,
-	})
+	// columns = append(columns, columnInfo{
+	// 	Name:       "id",
+	// 	Type:       "string",
+	// 	PrimaryKey: true,
+	// })
 
 	log.Printf("COLUMNS: %v", columns)
 

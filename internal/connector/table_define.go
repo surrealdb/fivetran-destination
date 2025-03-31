@@ -31,6 +31,11 @@ func (s *Server) defineTable(db *surrealdb.DB, table *pb.Table) error {
 	log.Printf("Defined table %s: %s", tb, query)
 
 	for _, c := range table.Columns {
+		if c.Name == "id" {
+			log.Printf("Skipping id")
+			continue
+		}
+
 		if err := validateColumnName(c.Name); err != nil {
 			return err
 		}
