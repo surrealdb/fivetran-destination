@@ -639,6 +639,18 @@ func (s *Server) WriteHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 		fields[column.Name] = column
 	}
 
+	if err := s.batchProcessEarliestStartFiles(db, fields, req); err != nil {
+		return &pb.WriteBatchResponse{
+			// success, warning, task
+			Response: &pb.WriteBatchResponse_Warning{
+				Warning: &pb.Warning{
+					Message: err.Error(),
+				},
+			},
+		}, err
+	}
+
+	// for _, files := range [][]string{req.ReplaceFiles, req.UpdateFiles, req.DeleteFiles} {
 	if err := s.batchReplace(db, fields, req.ReplaceFiles, req.FileParams, req.Keys, req.Table); err != nil {
 		return &pb.WriteBatchResponse{
 			// success, warning, task
@@ -650,26 +662,26 @@ func (s *Server) WriteHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 		}, err
 	}
 
-	// if err := s.batchUpdate(db, fields, req); err != nil {
-	// 	return &pb.WriteBatchResponse{
-	// 		// success, warning, task
-	// 		Response: &pb.WriteBatchResponse_Warning{
-	// 			Warning: &pb.Warning{
-	// 				Message: err.Error(),
-	// 			},
-	// 		},
-	// 	}, err
-	// }
-
-	// if err := s.batchDelete(db, fields, req); err != nil {
-	// 	return &pb.WriteBatchResponse{
-	// 		// success, warning, task
-	// 		Response: &pb.WriteBatchResponse_Warning{
-	// 			Warning: &pb.Warning{
-	// 				Message: err.Error(),
-	// 			},
-	// 		},
-	// 	}, err
+	if err := s.batchHistoryUpdate(db, fields, req); err != nil {
+		return &pb.WriteBatchResponse{
+			// success, warning, task
+			Response: &pb.WriteBatchResponse_Warning{
+				Warning: &pb.Warning{
+					Message: err.Error(),
+				},
+			},
+		}, err
+	}
+	if err := s.batchReplace(db, fields, req.DeleteFiles, req.FileParams, req.Keys, req.Table); err != nil {
+		return &pb.WriteBatchResponse{
+			// success, warning, task
+			Response: &pb.WriteBatchResponse_Warning{
+				Warning: &pb.Warning{
+					Message: err.Error(),
+				},
+			},
+		}, err
+	}
 	// }
 
 	return &pb.WriteBatchResponse{
@@ -677,4 +689,158 @@ func (s *Server) WriteHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 			Success: true,
 		},
 	}, nil
+}
+
+func (s *Server) batchProcessEarliestStartFiles(db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteHistoryBatchRequest) error {
+	return s.processCSVRecords(req.EarliestStartFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
+		log.Printf("  Processing earliest start file: %v %v", columns, record)
+
+		values := make(map[string]string)
+		for i, column := range columns {
+			values[column] = record[i]
+		}
+
+		log.Printf("  Earliest start record: values %v", values)
+
+		// We have `id` and `_fivetran_start`.
+		// Let's remove everything all the records with the same `id`,
+		// whose `_fivetran_start` is GREATER THAN this `_fivetran_start`.
+
+		var id any
+		if v, ok := values["_fivetran_id"]; ok {
+			id = v
+		} else if v, ok := values["id"]; ok {
+			id = v
+		} else {
+			return fmt.Errorf("id nor _fivetran_id not found in the record: %v", values)
+		}
+
+		thing := models.NewRecordID(req.Table.Name, id)
+
+		vars := map[string]interface{}{}
+		for k, v := range values {
+			if k == "id" {
+				log.Printf("Skipping id")
+				continue
+			}
+
+			f, ok := fields[k]
+			if !ok {
+				return fmt.Errorf("column %s not found in the table info: %v", k, fields)
+			}
+
+			var typedV interface{}
+
+			typedV, err := f.strToSurrealType(v)
+			if err != nil {
+				return err
+			}
+
+			vars[k] = typedV
+		}
+
+		vars["tb"] = req.Table.Name
+		vars["rc"] = models.NewRecordID(req.Table.Name, id)
+
+		res, err := surrealdb.Query[any](
+			db,
+			"DELETE FROM type::table($tb) WHERE id = type::record($rc) AND _fivetran_start > type::datetime($_fivetran_start);",
+			vars,
+		)
+		if err != nil {
+			return fmt.Errorf("unable to upsert record %s: %w", thing, err)
+		}
+
+		log.Printf("  Removed records with id %s and _fivetran_start greater than %s: %+v", id, vars["_fivetran_start"], *res)
+
+		return nil
+	})
+}
+
+func (s *Server) batchHistoryUpdate(db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteHistoryBatchRequest) error {
+	return s.processCSVRecords(req.UpdateFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
+		log.Printf("  Processing update file: %v %v", columns, record)
+
+		values := make(map[string]string)
+		for i, column := range columns {
+			values[column] = record[i]
+		}
+
+		log.Printf("  Update record: values %v", values)
+
+		var id any
+		if v, ok := values["_fivetran_id"]; ok {
+			id = v
+		} else if v, ok := values["id"]; ok {
+			id = v
+		} else {
+			return fmt.Errorf("id nor _fivetran_id not found in the record: %v", values)
+		}
+
+		thing := models.NewRecordID(req.Table.Name, id)
+
+		var unmodifiedFields []string
+
+		vars := map[string]interface{}{}
+		for k, v := range values {
+			if k == "id" {
+				log.Printf("Skipping id")
+				continue
+			}
+
+			f, ok := fields[k]
+			if !ok {
+				return fmt.Errorf("column %s not found in the table info: %v", k, fields)
+			}
+
+			if v == req.FileParams.UnmodifiedString {
+				unmodifiedFields = append(unmodifiedFields, k)
+				continue
+			}
+
+			var typedV interface{}
+
+			typedV, err := f.strToSurrealType(v)
+			if err != nil {
+				return err
+			}
+
+			vars[k] = typedV
+		}
+
+		// Get the preivous values to populate the fields with values set to the unmodeified string
+		previousFieldsAndValues, err := s.getPreviousValues(db, thing, unmodifiedFields)
+		if err != nil {
+			return fmt.Errorf("unable to get previous values for record %s: %w", thing, err)
+		}
+
+		for k, v := range previousFieldsAndValues {
+			vars[k] = v
+		}
+
+		res, err := surrealdb.Upsert[any](db, thing, vars)
+		if err != nil {
+			return fmt.Errorf("unable to upsert record %s: %w", thing, err)
+		}
+
+		log.Printf("  Added record %s with %v: %+v", thing, vars, *res)
+
+		return nil
+	})
+}
+
+func (s *Server) getPreviousValues(db *surrealdb.DB, thing models.RecordID, fields []string) (map[string]interface{}, error) {
+	req, err := surrealdb.Query[map[string]interface{}](
+		db,
+		"SELECT $fields FROM type::record($rc) WHERE id = type::record($rc);",
+		map[string]interface{}{
+			"rc":     thing,
+			"fields": fields,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get previous values for record %s: %w", thing, err)
+	}
+
+	return req.Result, nil
 }

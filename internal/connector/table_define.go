@@ -30,10 +30,18 @@ func (s *Server) defineTable(db *surrealdb.DB, table *pb.Table) error {
 
 	log.Printf("Defined table %s: %s", tb, query)
 
+	var historyMode bool
+
 	for _, c := range table.Columns {
 		if c.Name == "id" {
 			log.Printf("Skipping id")
 			continue
+		}
+
+		// We assume the table will be written using WriteHistoryBatch
+		// if the table has a _fivetran_start column.
+		if c.Name == "_fivetran_start" {
+			historyMode = true
 		}
 
 		if err := validateColumnName(c.Name); err != nil {
@@ -50,5 +58,19 @@ func (s *Server) defineTable(db *surrealdb.DB, table *pb.Table) error {
 		log.Printf("Defined field %s for table %s: %s", c.Name, tb, q)
 	}
 
+	if historyMode {
+		q, err := s.defineFivetranStartFieldIndex(tb)
+		if err != nil {
+			return err
+		}
+		if err := db.Send(&ver, "query", q); err != nil {
+			return err
+		}
+		log.Printf("Defined fivetran_start field index for table %s: %s", tb, q)
+	}
 	return nil
+}
+
+func (s *Server) defineFivetranStartFieldIndex(tb string) (string, error) {
+	return fmt.Sprintf(`DEFINE INDEX IF NOT EXISTS %s ON %s FIELDS _fivetran_start;`, tb, tb), nil
 }
