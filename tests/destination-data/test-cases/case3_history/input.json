@@ -1,0 +1,54 @@
+{
+   "create_table" : {
+      "transaction": {
+         "columns": {
+            "id": "INT",
+            "amount" : "DOUBLE",
+            "desc": "STRING"
+         },
+         "primary_key": ["id"],
+         "history_mode": true
+      }
+   },
+   "alter_table" : {
+      "transaction": {
+         "columns": {
+            "id": "INT",
+            "amount" : "FLOAT",
+            "desc": "STRING"
+         },
+         "primary_key": ["id"],
+         "history_mode": true
+      }
+   },
+   "describe_table" : [
+      "transaction"
+   ],
+   "ops" : [
+      {
+         "upsert": {
+            "transaction": [
+               {"id":1, "amount": 100.45, "desc":null, "op_time":"2005-05-23T20:57:00Z"},
+               {"id":2, "amount": 150.33, "desc": "two", "op_time":"2005-05-23T20:57:00Z"},
+               {"id":3, "amount": 150.33, "desc": "three", "op_time":"2005-05-23T20:57:00Z"},
+               {"id":4, "amount": 150.33, "desc": "four", "op_time":"2005-05-23T20:57:00Z"}
+            ]
+         }
+      },
+      {
+         "update": {
+            "transaction": [
+               {"id":1, "amount": 200 ,"op_time":"2005-05-24T20:57:00Z"},
+               {"id":2, "amount": 200 ,"op_time":"2005-05-24T20:57:00Z"}
+            ]
+         }
+      },
+      {
+         "upsert": {
+            "transaction": [
+               {"id": 3, "amount": 100, "desc": "three upserted", "op_time":"2005-05-24T20:56:00Z"}
+            ]
+         }
+      }
+   ]
+} 

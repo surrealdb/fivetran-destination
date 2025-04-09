@@ -17,19 +17,41 @@ type DBValidator struct {
 }
 
 func NewDBValidator() (*DBValidator, error) {
-	db, err := surrealdb.New("ws://localhost:8000/rpc")
+	// Get SurrealDB connection details from environment variables
+	url := os.Getenv("SURREALDB_URL")
+	if url == "" {
+		url = "ws://localhost:8000/rpc"
+	}
+	username := os.Getenv("SURREALDB_USERNAME")
+	if username == "" {
+		username = "root"
+	}
+	password := os.Getenv("SURREALDB_PASSWORD")
+	if password == "" {
+		password = "root"
+	}
+	namespace := os.Getenv("SURREALDB_NAMESPACE")
+	if namespace == "" {
+		namespace = "test"
+	}
+	database := os.Getenv("SURREALDB_DATABASE")
+	if database == "" {
+		database = "test"
+	}
+
+	db, err := surrealdb.New(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to SurrealDB: %v", err)
 	}
 
-	if err := db.Use("testns", "tester"); err != nil {
+	if err := db.Use(namespace, database); err != nil {
 		return nil, fmt.Errorf("failed to use namespace and database: %v", err)
 	}
 
 	// Sign in as a namespace, database, or root user
 	auth := &surrealdb.Auth{
-		Username: "root",
-		Password: "root",
+		Username: username,
+		Password: password,
 	}
 	token, err := db.SignIn(auth)
 	if err != nil {
@@ -44,10 +66,22 @@ func NewDBValidator() (*DBValidator, error) {
 	return &DBValidator{db: db}, nil
 }
 
-func (v *DBValidator) DumpCurrentState() (map[string][]map[string]interface{}, error) {
-	// TODO Use `info for db` to get table names
-	tableNames := []string{"transaction", "campaign"}
+func loadExpectedTables(expectedPath string) (*ExpectedDBState, error) {
+	// Read expected state from YAML to get table names
+	expectedData, err := os.ReadFile(expectedPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read expected state file: %v", err)
+	}
 
+	var expected ExpectedDBState
+	if err := yaml.Unmarshal(expectedData, &expected); err != nil {
+		return nil, fmt.Errorf("failed to parse expected state YAML: %v", err)
+	}
+
+	return &expected, nil
+}
+
+func (v *DBValidator) DumpCurrentState(tableNames []string) (map[string][]map[string]interface{}, error) {
 	result := make(map[string][]map[string]interface{})
 	for _, tableName := range tableNames {
 		// Query all records from the table
@@ -65,19 +99,18 @@ func (v *DBValidator) DumpCurrentState() (map[string][]map[string]interface{}, e
 }
 
 func (v *DBValidator) CompareWithExpected(expectedPath string) error {
-	// Read expected state from YAML
-	expectedData, err := os.ReadFile(expectedPath)
+	// Load expected tables from YAML
+	expected, err := loadExpectedTables(expectedPath)
 	if err != nil {
-		return fmt.Errorf("failed to read expected state file: %v", err)
-	}
-
-	var expected ExpectedDBState
-	if err := yaml.Unmarshal(expectedData, &expected); err != nil {
-		return fmt.Errorf("failed to parse expected state YAML: %v", err)
+		return fmt.Errorf("failed to load expected tables: %v", err)
 	}
 
 	// Get current state
-	current, err := v.DumpCurrentState()
+	tableNames := make([]string, 0, len(expected.Tables))
+	for tableName := range expected.Tables {
+		tableNames = append(tableNames, tableName)
+	}
+	current, err := v.DumpCurrentState(tableNames)
 	if err != nil {
 		return fmt.Errorf("failed to get current state: %v", err)
 	}

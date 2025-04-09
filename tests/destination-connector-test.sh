@@ -43,6 +43,14 @@ run_test_case() {
     echo "Waiting for the connector to start..."
     sleep 5
 
+    # Build and run db-truncate to clean up tables
+    echo "Building and running db-truncate..."
+    cd db-truncate
+    go build -o ../bin/db-truncate
+    cd ..
+    SURREALDB_NAMESPACE=testns SURREALDB_DATABASE=tester ./bin/db-truncate -f "$case_dir/expected.yaml"
+    echo "Tables truncated successfully."
+
     # Check if Docker is authenticated with Google Artifact Registry
     echo "Checking Docker authentication with Google Artifact Registry..."
     if ! docker pull us-docker.pkg.dev/build-286712/public-docker-us/sdktesters-v2/sdk-tester:$SDK_TESTER_TAG > /dev/null 2>&1; then
@@ -65,7 +73,7 @@ run_test_case() {
     cd db-validator
     go build -o ../bin/db-validator
     cd ..
-    ./bin/db-validator "$case_dir/expected.yaml"
+    SURREALDB_NAMESPACE=testns SURREALDB_DATABASE=tester ./bin/db-validator "$case_dir/expected.yaml"
 
     # Clean up
     echo "Cleaning up..."
