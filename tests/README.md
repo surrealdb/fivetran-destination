@@ -27,29 +27,52 @@ Each test case consists of:
 ### Prerequisites
 
 1. Docker installed and running
-2. Go 1.22 or later installed
+2. Go 1.22 or later installed (only required for non-Docker runs)
 3. Authenticated with Google Artifact Registry for pulling the SDK tester image
 
 ### Running All Tests
 
-To run all test cases:
+#### Direct Execution (Go)
+To run all test cases directly using Go:
 
 ```bash
 ./destination-connector-test.sh
 ```
 
-### Running a Specific Test Case
-
-To run a specific test case:
+#### Using Docker
+To run all test cases using the Docker container:
 
 ```bash
-TEST_CASE=case1 make destination-test
+USE_DOCKER=true ./destination-connector-test.sh
 ```
 
-You can enable the debug logging with:
+### Running a Specific Test Case
+
+#### Direct Execution (Go)
+To run a specific test case directly:
 
 ```bash
-SURREAL_FIVETRAN_DEBUG=1 TEST_CASE=case1 make destination-test
+TEST_CASE=case1 ./destination-connector-test.sh
+```
+
+#### Using Docker
+To run a specific test case using Docker:
+
+```bash
+USE_DOCKER=true TEST_CASE=case1 ./destination-connector-test.sh
+```
+
+### Debug Mode
+You can enable debug logging with:
+
+```bash
+SURREAL_FIVETRAN_DEBUG=1 TEST_CASE=case1 ./destination-connector-test.sh
+```
+
+Or with Docker:
+
+```bash
+SURREAL_FIVETRAN_DEBUG=1 USE_DOCKER=true TEST_CASE=case1 ./destination-connector-test.sh
 ```
 
 ## Expected Database State Format
@@ -59,3 +82,9 @@ See [example.yaml](./db-validator/example.yaml) for the example that illustrates
 ## Troubleshooting
 
 - If a test fails, check the error message from the db-validator for details about what didn't match
+- When using Docker, ensure that the container can reach the SurrealDB instance
+- If you encounter Docker-related issues, try cleaning up existing containers:
+  ```bash
+  docker stop connector-test surrealdb-test || true
+  docker rm connector-test surrealdb-test || true
+  ```

@@ -39,17 +39,29 @@ In near future, we will support token-based authentication, too.
 
 ### Prerequisites
 
-- Go 1.21 or later
+- Go 1.22 or later (toolchain go1.24.1 or later)
 - Protocol Buffers compiler (protoc)
 - SurrealDB instance for testing
 - Docker (for running conformance tests)
 
 ### Building
 
+#### Local Build
 ```bash
 cd fivetran-destination
 go build -o bin/connector
 ```
+
+#### Docker Build
+```bash
+# Build the Docker image
+docker build -t fivetran-surrealdb-connector .
+
+# Run the container
+docker run -p 50052:50052 fivetran-surrealdb-connector
+```
+
+The connector will be available on port 50052. Make sure your SurrealDB instance is accessible from the container.
 
 ### Testing
 

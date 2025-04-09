@@ -4,6 +4,8 @@ set -e
 SDK_TESTER_TAG=${SDK_TESTER_TAG:-2.25.0311.001}
 SURREALDB_TAG=${SURREALDB_TAG:-latest}
 TEST_CASE=${TEST_CASE:-all}
+USE_DOCKER=${USE_DOCKER:-false}
+LOG_DIR="$(pwd)/logs"
 
 # Destination Connector Conformance Test Script
 echo "Starting SurrealDB Destination Connector Conformance Test"
@@ -15,12 +17,86 @@ mkdir -p "$(pwd)/destination-data"
 echo "Checking if SurrealDB is running..."
 if ! curl -s http://localhost:8000/health > /dev/null; then
     echo "SurrealDB is not running. Starting SurrealDB..."
-    docker run -d --name surrealdb-test -p 8000:8000 surrealdb/surrealdb:$SURREALDB_TAG start --user root --pass root
+    docker run -d --name surrealdb-test \
+      -p 8000:8000 \
+      surrealdb/surrealdb:$SURREALDB_TAG start --user root --pass root
     sleep 5
     echo "SurrealDB started."
 else
     echo "SurrealDB is already running."
 fi
+
+# Function to start the connector
+start_connector() {
+    if [ "$USE_DOCKER" = "true" ]; then
+        echo "Starting connector via Docker..."
+        # Build the Docker image if it doesn't exist
+        if ! docker image inspect fivetran-surrealdb-connector:latest > /dev/null 2>&1; then
+            cd "$(pwd)/.."
+            docker build -t fivetran-surrealdb-connector .
+            cd tests
+        fi
+        # Run the container with environment variables and network settings
+        #
+        # Note that this exposes 50052 to the host thanks to `--network host` and the --port flag
+        # specified in the Dockerfile
+        #
+        # Also noet that the mount target needs to be the absolute path to the destination-data directory
+        # rather than "/data", because it needs to correlate with the WORKING_DIR environment variable
+        # specified in the destination connector tester container!
+        docker run -d --name connector-test \
+            --mount type=bind,source="$(pwd)/destination-data",target="$(pwd)/destination-data" \
+            --network host \
+            -e SURREAL_FIVETRAN_DEBUG="${SURREAL_FIVETRAN_DEBUG:-}" \
+            -p 50052:50052 \
+            fivetran-surrealdb-connector
+        CONNECTOR_PID="docker"
+    else
+        echo "Starting connector directly..."
+        cd "$(pwd)/.."
+        go build -o bin/connector
+        SURREAL_FIVETRAN_DEBUG="${SURREAL_FIVETRAN_DEBUG:-}" ./bin/connector --port 50052 &
+        CONNECTOR_PID=$!
+        cd tests
+    fi
+}
+
+# Function to stop the connector
+stop_connector() {
+    if [ "$USE_DOCKER" = "true" ]; then
+        echo "Stopping connector container..."
+        docker stop connector-test
+        docker rm connector-test
+    else
+        echo "Stopping connector process..."
+        kill $CONNECTOR_PID
+    fi
+}
+
+# Function to clean up Docker resources
+cleanup_docker() {
+    if [ "$USE_DOCKER" = "true" ]; then
+        echo "Cleaning up Docker resources..."
+        docker stop connector-test surrealdb-test || true
+        docker rm connector-test surrealdb-test || true
+    fi
+}
+
+# Set up trap to clean up Docker resources on script exit
+trap cleanup_docker EXIT
+
+# Function to dump connector logs
+dump_connector_logs() {
+    local case_name="$1"
+    local log_file="${LOG_DIR}/connector_${case_name}_$(date +%Y%m%d_%H%M%S).log"
+
+    if [ "$USE_DOCKER" = "true" ]; then
+        echo "Dumping connector logs to $log_file..."
+        mkdir -p "$LOG_DIR"
+        docker logs connector-test > "$log_file" 2>&1
+        echo "Connector logs saved to $log_file"
+    fi
+}
 
 # Function to run a single test case
 run_test_case() {
@@ -31,13 +107,8 @@ run_test_case() {
     # Copy input file to destination-data with new name
     cp "$case_dir/input.json" "$(pwd)/destination-data/input_${case_name}.json"
 
-    # Build and start the destination connector
-    echo "Building and starting the destination connector..."
-    cd "$(pwd)/.."
-    go build -o bin/connector
-    ./bin/connector --port 50052 &
-    CONNECTOR_PID=$!
-    cd tests
+    # Start the connector
+    start_connector
 
     # Wait for the connector to start
     echo "Waiting for the connector to start..."
@@ -59,12 +130,18 @@ run_test_case() {
         exit 1
     fi
 
+    GRPC_HOSTNAME="host.docker.internal"
+    if [ "$USE_DOCKER" = "true" ]; then
+        GRPC_HOSTNAME="localhost"
+   fi
+
     # Run the destination connector tester
     echo "Running the destination connector tester..."
     docker run --mount type=bind,source="$(pwd)/destination-data",target=/data \
       -a STDIN -a STDOUT -a STDERR -it \
       -e WORKING_DIR="$(pwd)/destination-data" \
-      -e GRPC_HOSTNAME=host.docker.internal --network=host \
+      --network=host \
+      -e GRPC_HOSTNAME=$GRPC_HOSTNAME \
       us-docker.pkg.dev/build-286712/public-docker-us/sdktesters-v2/sdk-tester:$SDK_TESTER_TAG \
       --tester-type destination --port 50052 --input-file "input_${case_name}.json"
 
@@ -73,11 +150,21 @@ run_test_case() {
     cd db-validator
     go build -o ../bin/db-validator
     cd ..
-    SURREALDB_NAMESPACE=testns SURREALDB_DATABASE=tester ./bin/db-validator "$case_dir/expected.yaml"
+    
+    # Store the validation result
+    local validation_result=0
+    SURREALDB_NAMESPACE=testns SURREALDB_DATABASE=tester ./bin/db-validator "$case_dir/expected.yaml" || validation_result=$?
 
-    # Clean up
-    echo "Cleaning up..."
-    kill $CONNECTOR_PID
+    # Always dump logs regardless of validation result
+    echo "Dumping connector logs..."
+    dump_connector_logs "$case_name"
+    stop_connector
+
+    # Exit with validation result
+    if [ $validation_result -ne 0 ]; then
+        echo "Test case $case_name failed validation!"
+        exit $validation_result
+    fi
 
     echo "Test case $case_name completed successfully!"
 }
