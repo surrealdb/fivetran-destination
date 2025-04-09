@@ -29,6 +29,8 @@ func (c *columnInfo) strToSurrealType(v string) (interface{}, error) {
 	return nil, fmt.Errorf("unsupported data type for column %s: %s", c.Name, c.Type)
 }
 
+var ErrTableNotFound = fmt.Errorf("table not found")
+
 func (s *Server) infoForTable(schemaName string, tableName string, configuration map[string]string) (tableInfo, error) {
 	cfg, err := s.parseConfig(configuration)
 	if err != nil {
@@ -66,11 +68,17 @@ func (s *Server) infoForTable(schemaName string, tableName string, configuration
 		return tableInfo{}, err
 	}
 
+	if len(*info) == 0 {
+		return tableInfo{}, ErrTableNotFound
+	}
+
 	first := (*info)[0]
 
 	fields := first.Result.Fields
 
-	log.Printf("INFO FOR TABLE %s: %v", tableName, fields)
+	if s.debugging() {
+		log.Printf("INFO FOR TABLE %s: %v", tableName, fields)
+	}
 
 	columns := []columnInfo{}
 
@@ -104,7 +112,9 @@ func (s *Server) infoForTable(schemaName string, tableName string, configuration
 	// 	PrimaryKey: true,
 	// })
 
-	log.Printf("COLUMNS: %v", columns)
+	if s.debugging() {
+		log.Printf("COLUMNS: %v", columns)
+	}
 
 	return tableInfo{
 		columns: columns,

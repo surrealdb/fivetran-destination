@@ -11,7 +11,7 @@ import (
 	"github.com/surrealdb/surrealdb.go"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
-	_ "google.golang.org/grpc/encoding/gzip" // Register the gzip compressor
+	_ "google.golang.org/grpc/encoding/gzip"
 )
 
 func NewServer() *Server {
@@ -97,7 +97,7 @@ func (s *Server) ConfigurationForm(ctx context.Context, req *pb.ConfigurationFor
 func (s *Server) Capabilities(ctx context.Context, req *pb.CapabilitiesRequest) (*pb.CapabilitiesResponse, error) {
 	log.Printf("Capabilities called")
 	return &pb.CapabilitiesResponse{
-		// Or Parquet
+		// TODO: Parquet support?
 		BatchFileFormat: pb.BatchFileFormat_CSV,
 	}, nil
 }
@@ -113,7 +113,6 @@ func (s *Server) Test(ctx context.Context, req *pb.TestRequest) (*pb.TestRespons
 	cfg, err := s.parseConfig(req.Configuration)
 	if err != nil {
 		return &pb.TestResponse{
-			// success, failure
 			Response: &pb.TestResponse_Failure{
 				Failure: err.Error(),
 			},
@@ -122,7 +121,6 @@ func (s *Server) Test(ctx context.Context, req *pb.TestRequest) (*pb.TestRespons
 
 	if _, err := s.connect(cfg, ""); err != nil {
 		return &pb.TestResponse{
-			// success, failure
 			Response: &pb.TestResponse_Failure{
 				Failure: err.Error(),
 			},
@@ -130,7 +128,6 @@ func (s *Server) Test(ctx context.Context, req *pb.TestRequest) (*pb.TestRespons
 	}
 
 	return &pb.TestResponse{
-		// success, failure
 		Response: &pb.TestResponse_Success{
 			Success: true,
 		},
@@ -144,8 +141,15 @@ func (s *Server) DescribeTable(ctx context.Context, req *pb.DescribeTableRequest
 	}
 	tb, err := s.infoForTable(req.SchemaName, req.TableName, req.Configuration)
 	if err != nil {
+		if err == ErrTableNotFound {
+			return &pb.DescribeTableResponse{
+				Response: &pb.DescribeTableResponse_NotFound{
+					NotFound: true,
+				},
+			}, nil
+		}
+
 		return &pb.DescribeTableResponse{
-			// notfound, table, warning, task
 			Response: &pb.DescribeTableResponse_Warning{
 				Warning: &pb.Warning{
 					Message: err.Error(),
@@ -190,7 +194,6 @@ func (s *Server) CreateTable(ctx context.Context, req *pb.CreateTableRequest) (*
 	cfg, err := s.parseConfig(req.Configuration)
 	if err != nil {
 		return &pb.CreateTableResponse{
-			// success, warning, task
 			Response: &pb.CreateTableResponse_Warning{
 				Warning: &pb.Warning{
 					Message: err.Error(),
@@ -255,7 +258,6 @@ func (s *Server) AlterTable(ctx context.Context, req *pb.AlterTableRequest) (*pb
 	cfg, err := s.parseConfig(req.Configuration)
 	if err != nil {
 		return &pb.AlterTableResponse{
-			// success, warning, task
 			Response: &pb.AlterTableResponse_Warning{
 				Warning: &pb.Warning{
 					Message: err.Error(),
@@ -271,7 +273,6 @@ func (s *Server) AlterTable(ctx context.Context, req *pb.AlterTableRequest) (*pb
 	db, err := s.connect(cfg, req.SchemaName)
 	if err != nil {
 		return &pb.AlterTableResponse{
-			// success, warning, task
 			Response: &pb.AlterTableResponse_Warning{
 				Warning: &pb.Warning{
 					Message: err.Error(),
@@ -283,7 +284,6 @@ func (s *Server) AlterTable(ctx context.Context, req *pb.AlterTableRequest) (*pb
 
 	if err := s.defineTable(db, req.Table); err != nil {
 		return &pb.AlterTableResponse{
-			// success, warning, task
 			Response: &pb.AlterTableResponse_Warning{
 				Warning: &pb.Warning{
 					Message: err.Error(),
@@ -295,7 +295,6 @@ func (s *Server) AlterTable(ctx context.Context, req *pb.AlterTableRequest) (*pb
 	tbInfo, err := s.infoForTable(req.SchemaName, req.Table.Name, req.Configuration)
 	if err != nil {
 		return &pb.AlterTableResponse{
-			// success, warning, task
 			Response: &pb.AlterTableResponse_Warning{
 				Warning: &pb.Warning{
 					Message: err.Error(),
@@ -309,7 +308,6 @@ func (s *Server) AlterTable(ctx context.Context, req *pb.AlterTableRequest) (*pb
 	}
 
 	return &pb.AlterTableResponse{
-		// success, warning, task
 		Response: &pb.AlterTableResponse_Success{
 			Success: true,
 		},
@@ -336,7 +334,6 @@ func (s *Server) Truncate(ctx context.Context, req *pb.TruncateRequest) (*pb.Tru
 	}
 
 	return &pb.TruncateResponse{
-		// success, warning, task
 		Response: &pb.TruncateResponse_Success{
 			Success: true,
 		},
@@ -359,7 +356,6 @@ func (s *Server) WriteBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb
 	cfg, err := s.parseConfig(req.Configuration)
 	if err != nil {
 		return &pb.WriteBatchResponse{
-			// success, warning, task
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
 					Message: err.Error(),
@@ -371,7 +367,6 @@ func (s *Server) WriteBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb
 	db, err := s.connect(cfg, req.SchemaName)
 	if err != nil {
 		return &pb.WriteBatchResponse{
-			// success, warning, task
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
 					Message: err.Error(),
@@ -388,7 +383,6 @@ func (s *Server) WriteBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb
 	tb, err := s.infoForTable(req.SchemaName, req.Table.Name, req.Configuration)
 	if err != nil {
 		return &pb.WriteBatchResponse{
-			// success, warning, task
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
 					Message: err.Error(),
@@ -404,7 +398,6 @@ func (s *Server) WriteBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb
 
 	if err := s.batchReplace(db, fields, req.ReplaceFiles, req.FileParams, req.Keys, req.Table); err != nil {
 		return &pb.WriteBatchResponse{
-			// success, warning, task
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
 					Message: err.Error(),
@@ -415,7 +408,6 @@ func (s *Server) WriteBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb
 
 	if err := s.batchUpdate(db, fields, req); err != nil {
 		return &pb.WriteBatchResponse{
-			// success, warning, task
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
 					Message: err.Error(),
@@ -426,7 +418,6 @@ func (s *Server) WriteBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb
 
 	if err := s.batchDelete(db, fields, req); err != nil {
 		return &pb.WriteBatchResponse{
-			// success, warning, task
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
 					Message: err.Error(),
@@ -436,7 +427,6 @@ func (s *Server) WriteBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb
 	}
 
 	return &pb.WriteBatchResponse{
-		// success, warning, task
 		Response: &pb.WriteBatchResponse_Success{
 			Success: true,
 		},
@@ -447,7 +437,9 @@ func (s *Server) WriteBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb
 func (s *Server) batchReplace(db *surrealdb.DB, fields map[string]columnInfo, replaceFiles []string, fileParams *pb.FileParams, keys map[string][]byte, table *pb.Table) error {
 	unmodifiedString := fileParams.UnmodifiedString
 	return s.processCSVRecords(replaceFiles, fileParams, keys, func(columns []string, record []string) error {
-		log.Printf("  Replacing record: %v %v", columns, record)
+		if s.debugging() {
+			log.Printf("  Replacing record: %v %v", columns, record)
+		}
 
 		values := make(map[string]string)
 		for i, column := range columns {
@@ -502,7 +494,9 @@ func (s *Server) batchReplace(db *surrealdb.DB, fields map[string]columnInfo, re
 			return fmt.Errorf("unable to upsert record %s: %w", thing, err)
 		}
 
-		log.Printf("  Replaced record %s with %v: %+v", thing, vars, *res)
+		if s.debugging() {
+			log.Printf("  Replaced record %s with %v: %+v", thing, vars, *res)
+		}
 
 		return nil
 	})
@@ -513,7 +507,9 @@ func (s *Server) batchUpdate(db *surrealdb.DB, fields map[string]columnInfo, req
 	unmodifiedString := req.FileParams.UnmodifiedString
 
 	return s.processCSVRecords(req.UpdateFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
-		log.Printf("  Updating record: %v %v", columns, record)
+		if s.debugging() {
+			log.Printf("  Updating record: %v %v", columns, record)
+		}
 
 		values := make(map[string]string)
 		for i, column := range columns {
@@ -549,7 +545,9 @@ func (s *Server) batchUpdate(db *surrealdb.DB, fields map[string]columnInfo, req
 			return err
 		}
 
-		log.Printf("  Updated record %s with %v: %+v", thing, vars, *res)
+		if s.debugging() {
+			log.Printf("  Updated record %s with %v: %+v", thing, vars, *res)
+		}
 
 		return nil
 	})
@@ -558,7 +556,9 @@ func (s *Server) batchUpdate(db *surrealdb.DB, fields map[string]columnInfo, req
 // Reads CSV files and deletes existing records accordingly.
 func (s *Server) batchDelete(db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteBatchRequest) error {
 	return s.processCSVRecords(req.DeleteFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
-		log.Printf("  Deleting record: %v %v", columns, record)
+		if s.debugging() {
+			log.Printf("  Deleting record: %v %v", columns, record)
+		}
 
 		values := make(map[string]string)
 		for i, column := range columns {
@@ -578,25 +578,28 @@ func (s *Server) batchDelete(db *surrealdb.DB, fields map[string]columnInfo, req
 			return fmt.Errorf("unable to delete record %s: %w", thing, err)
 		}
 
-		log.Printf("  Deleted record %s: %+v", thing, res)
+		if s.debugging() {
+			log.Printf("  Deleted record %s: %+v", thing, res)
+		}
 
 		return nil
 	})
 }
 
 func (s *Server) WriteHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatchRequest) (*pb.WriteBatchResponse, error) {
-	log.Printf("WriteHistoryBatch called for schema: %s, table: %s", req.SchemaName, req.Table.Name)
-	log.Printf("  Earliest start files: %d, Replace files: %d, Update files: %d, Delete files: %d",
-		len(req.EarliestStartFiles), len(req.ReplaceFiles), len(req.UpdateFiles), len(req.DeleteFiles))
-	log.Printf("  FileParams.Compression: %v", req.FileParams.Compression)
-	log.Printf("  FileParams.Encryption: %v", req.FileParams.Encryption)
-	log.Printf("  FileParams.NullString: %v", req.FileParams.NullString)
-	log.Printf("  FileParams.UnmodifiedString: %v", req.FileParams.UnmodifiedString)
+	if s.debugging() {
+		log.Printf("WriteHistoryBatch called for schema: %s, table: %s", req.SchemaName, req.Table.Name)
+		log.Printf("  Earliest start files: %d, Replace files: %d, Update files: %d, Delete files: %d",
+			len(req.EarliestStartFiles), len(req.ReplaceFiles), len(req.UpdateFiles), len(req.DeleteFiles))
+		log.Printf("  FileParams.Compression: %v", req.FileParams.Compression)
+		log.Printf("  FileParams.Encryption: %v", req.FileParams.Encryption)
+		log.Printf("  FileParams.NullString: %v", req.FileParams.NullString)
+		log.Printf("  FileParams.UnmodifiedString: %v", req.FileParams.UnmodifiedString)
+	}
 
 	cfg, err := s.parseConfig(req.Configuration)
 	if err != nil {
 		return &pb.WriteBatchResponse{
-			// success, warning, task
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
 					Message: err.Error(),
@@ -608,7 +611,6 @@ func (s *Server) WriteHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 	db, err := s.connect(cfg, req.SchemaName)
 	if err != nil {
 		return &pb.WriteBatchResponse{
-			// success, warning, task
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
 					Message: err.Error(),
@@ -625,7 +627,6 @@ func (s *Server) WriteHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 	tb, err := s.infoForTable(req.SchemaName, req.Table.Name, req.Configuration)
 	if err != nil {
 		return &pb.WriteBatchResponse{
-			// success, warning, task
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
 					Message: err.Error(),
@@ -641,7 +642,6 @@ func (s *Server) WriteHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 
 	if err := s.batchProcessEarliestStartFiles(db, fields, req); err != nil {
 		return &pb.WriteBatchResponse{
-			// success, warning, task
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
 					Message: err.Error(),
@@ -650,10 +650,8 @@ func (s *Server) WriteHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 		}, err
 	}
 
-	// for _, files := range [][]string{req.ReplaceFiles, req.UpdateFiles, req.DeleteFiles} {
 	if err := s.batchReplace(db, fields, req.ReplaceFiles, req.FileParams, req.Keys, req.Table); err != nil {
 		return &pb.WriteBatchResponse{
-			// success, warning, task
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
 					Message: err.Error(),
@@ -664,7 +662,6 @@ func (s *Server) WriteHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 
 	if err := s.batchHistoryUpdate(db, fields, req); err != nil {
 		return &pb.WriteBatchResponse{
-			// success, warning, task
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
 					Message: err.Error(),
@@ -674,7 +671,6 @@ func (s *Server) WriteHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 	}
 	if err := s.batchReplace(db, fields, req.DeleteFiles, req.FileParams, req.Keys, req.Table); err != nil {
 		return &pb.WriteBatchResponse{
-			// success, warning, task
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
 					Message: err.Error(),
@@ -759,14 +755,18 @@ func (s *Server) batchProcessEarliestStartFiles(db *surrealdb.DB, fields map[str
 
 func (s *Server) batchHistoryUpdate(db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteHistoryBatchRequest) error {
 	return s.processCSVRecords(req.UpdateFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
-		log.Printf("  Processing update file: %v %v", columns, record)
+		if s.debugging() {
+			log.Printf("  Processing update file: %v %v", columns, record)
+		}
 
 		values := make(map[string]string)
 		for i, column := range columns {
 			values[column] = record[i]
 		}
 
-		log.Printf("  Update record: values %v", values)
+		if s.debugging() {
+			log.Printf("  batchHistoryUpdate record: values %v", values)
+		}
 
 		var id any
 		if v, ok := values["_fivetran_id"]; ok {
@@ -823,16 +823,18 @@ func (s *Server) batchHistoryUpdate(db *surrealdb.DB, fields map[string]columnIn
 			return fmt.Errorf("unable to upsert record %s: %w", thing, err)
 		}
 
-		log.Printf("  Added record %s with %v: %+v", thing, vars, *res)
+		if s.debugging() {
+			log.Printf("  Added record %s with %v: %+v", thing, vars, *res)
+		}
 
 		return nil
 	})
 }
 
 func (s *Server) getPreviousValues(db *surrealdb.DB, thing models.RecordID, fields []string) (map[string]interface{}, error) {
-	req, err := surrealdb.Query[map[string]interface{}](
+	req, err := surrealdb.Query[[]map[string]interface{}](
 		db,
-		"SELECT $fields FROM type::record($rc) WHERE id = type::record($rc);",
+		"SELECT $fields FROM $rc;",
 		map[string]interface{}{
 			"rc":     thing,
 			"fields": fields,
@@ -842,5 +844,5 @@ func (s *Server) getPreviousValues(db *surrealdb.DB, thing models.RecordID, fiel
 		return nil, fmt.Errorf("unable to get previous values for record %s: %w", thing, err)
 	}
 
-	return req.Result, nil
+	return (*req)[0].Result[0], nil
 }

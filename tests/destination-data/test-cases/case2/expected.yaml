@@ -16,6 +16,18 @@ tables:
       _fivetran_end:
         time: "9999-12-31T23:59:59Z"
       _fivetran_start:
+        time: "2005-05-24T20:57:00Z"
+      _fivetran_synced:
+        recent-enough:
+          within: 30s
+      id:
+        table: transaction
+        id: "5"
+      amount: 200.0
+    - _fivetran_active: true
+      _fivetran_end:
+        time: "9999-12-31T23:59:59Z"
+      _fivetran_start:
         time: "2005-05-26T20:57:00Z"
       _fivetran_synced:
         recent-enough:
