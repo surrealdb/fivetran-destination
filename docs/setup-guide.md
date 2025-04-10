@@ -39,10 +39,10 @@ To connect a SurrealDB to Fivetran, you need the following:
 
 1. Ensure your SurrealDB instance is up and running.
   - Any Fivetran Deployment will communicate with your Surreal Cloud instance over the Internet.
-2. Browse [the Instances page](https://surrealist.app/cloud/instances)
-3. Choose "Connect > Surreal CLI" and locate the example command like `surreal sql --endpoint wss://YOUR_INSTANCE_HOSTNAME --token YOUR_TOKEN`
+2. Browse [the Instances page](https://surrealist.app/cloud/instances) and click one of your instances
+3. Click "Connect with Surreal CLI" and locate the command like `surreal sql --endpoint wss://YOUR_INSTANCE_HOSTNAME --token YOUR_TOKEN`
 
-Take notes of `wss://wss://YOUR_INSTANCE_HOSTNAME` and `YOUR_TOKEN` in the shown command. Those are Fivetran connector's `url` and `token`, respectively.
+Take notes of `wss://YOUR_INSTANCE_HOSTNAME` and `YOUR_TOKEN` in the shown command. You use those for Fivetran connector configuration's `url` and `token` settings, respectively.
 
 ### <span class="step-item"> Complete Fivetran configuration </span>
 
@@ -61,10 +61,9 @@ Take notes of `wss://wss://YOUR_INSTANCE_HOSTNAME` and `YOUR_TOKEN` in the shown
 
 Fivetran performs the following SurrealDB connection tests:
 
-The Host Connection test checks the host's accessibility and validates the database credentials you provided in the setup form.
-- The Database Connection test checks if we can connect to your SurrealDB database.
+- The Database Connection test checks if we can connect to your SurrealDB database using the provided URL and the token
 
-  > NOTE: The tests may take a couple of minutes to complete.
+  > NOTE: The test should complete in a few seconds if your Fivetran deployment can access the target SurrealDB instance.
 
 ---
 

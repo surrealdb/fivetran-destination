@@ -82,8 +82,8 @@ func (s *Server) ConfigurationForm(ctx context.Context, req *pb.ConfigurationFor
 	})
 
 	tests = append(tests, &pb.ConfigurationTest{
-		Name:  "test-connection",
-		Label: "Test Connection",
+		Name:  "database-connection",
+		Label: "Database Connection",
 	})
 
 	log.Printf("ConfigurationForm called")
