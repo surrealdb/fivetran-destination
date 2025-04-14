@@ -1,6 +1,6 @@
-.PHONY: all build test clean generate download-protos test-destination
+.PHONY: all build test clean generate download-protos test-destination lint
 
-all: generate build test test-destination
+all: generate build test test-destination lint
 
 download-protos:
 	mkdir -p proto
@@ -23,6 +23,10 @@ test:
 test-destination:
 	@echo "Running destination connector conformance tests..."
 	@cd tests && ./destination-connector-test.sh
+
+lint:
+	@echo "Running golangci-lint..."
+	@docker run --rm -v $(PWD):/app -w /app golangci/golangci-lint:v2.1.1 golangci-lint run --timeout=5m
 
 clean:
 	rm -rf bin/
