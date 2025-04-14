@@ -17,9 +17,8 @@ func (s *Server) defineTable(db *surrealdb.DB, table *pb.Table) error {
 		return err
 	}
 	tb := table.Name
-	var query string
 	// if len(table.Columns) > 0 {
-	query = fmt.Sprintf(`DEFINE TABLE IF NOT EXISTS %s SCHEMAFULL;`, tb)
+	query := fmt.Sprintf(`DEFINE TABLE IF NOT EXISTS %s SCHEMAFULL;`, tb)
 	// } else {
 	// 	query = fmt.Sprintf(`DEFINE TABLE IF NOT EXISTS %s SCHEMALESS;`, tb)
 	// }

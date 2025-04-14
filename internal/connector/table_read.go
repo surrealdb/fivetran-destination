@@ -40,7 +40,11 @@ func (s *Server) infoForTable(schemaName string, tableName string, configuration
 	if err != nil {
 		return tableInfo{}, err
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			s.logWarning("failed to close db", err)
+		}
+	}()
 
 	// the result is formatted like:
 	// {

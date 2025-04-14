@@ -78,8 +78,7 @@ func TestCreateEncryptedZstdFile(t *testing.T) {
 		t.Fatalf("failed to create cipher: %v", err)
 	}
 
-	iv := make([]byte, aes.BlockSize)
-	iv = encrypted[:aes.BlockSize]
+	iv := encrypted[:aes.BlockSize]
 	encrypted = encrypted[aes.BlockSize:]
 	stream := cipher.NewCBCDecrypter(block, iv)
 
@@ -236,8 +235,12 @@ func TestZstdReadCloser(t *testing.T) {
 		t.Fatalf("failed to create zstd writer: %v", err)
 	}
 
-	writer.Write([]byte("Hello, World!"))
-	writer.Close()
+	if _, err := writer.Write([]byte("Hello, World!")); err != nil {
+		t.Fatalf("failed to write zstd data: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("failed to close zstd writer: %v", err)
+	}
 
 	reader := NewZstdReadCloser(io.NopCloser(compressed))
 
@@ -256,8 +259,12 @@ func TestZstd(t *testing.T) {
 		t.Fatalf("failed to create zstd writer: %v", err)
 	}
 
-	writer.Write([]byte("Hello, World!"))
-	writer.Close()
+	if _, err := writer.Write([]byte("Hello, World!")); err != nil {
+		t.Fatalf("failed to write zstd data: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("failed to close zstd writer: %v", err)
+	}
 
 	reader, err := zstd.NewReader(compressed)
 	if err != nil {

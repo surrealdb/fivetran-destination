@@ -143,7 +143,7 @@ func (v *DBValidator) CompareWithExpected(expectedPath string) error {
 		for _, record := range currentRecords {
 			for key, value := range record {
 				if value, ok := value.(models.CustomDateTime); ok {
-					record[key] = models.CustomDateTime{Time: value.Time.UTC()}
+					record[key] = models.CustomDateTime{Time: value.UTC()}
 				}
 			}
 		}

@@ -35,8 +35,7 @@ func NewServer(logger zerolog.Logger) *Server {
 type Server struct {
 	pb.UnimplementedDestinationConnectorServer
 
-	connection *surrealdb.DB
-	mu         *sync.Mutex
+	mu *sync.Mutex
 
 	*Logging
 }
@@ -242,7 +241,11 @@ func (s *Server) CreateTable(ctx context.Context, req *pb.CreateTableRequest) (*
 			},
 		}, err
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			s.logWarning("failed to close db", err)
+		}
+	}()
 
 	if err := s.defineTable(db, req.Table); err != nil {
 		return &pb.CreateTableResponse{
@@ -309,7 +312,11 @@ func (s *Server) AlterTable(ctx context.Context, req *pb.AlterTableRequest) (*pb
 			},
 		}, err
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			s.logWarning("failed to close db", err)
+		}
+	}()
 
 	if err := s.defineTable(db, req.Table); err != nil {
 		return &pb.AlterTableResponse{
@@ -405,7 +412,11 @@ func (s *Server) WriteBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb
 			},
 		}, err
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			s.logWarning("failed to close db", err)
+		}
+	}()
 
 	if s.debugging() {
 		s.logDebug("WriteBatch using", "namespace", cfg.ns, "database", req.SchemaName)
@@ -658,7 +669,11 @@ func (s *Server) WriteHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 			},
 		}, err
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			s.logWarning("failed to close db", err)
+		}
+	}()
 
 	if s.debugging() {
 		s.logDebug("WriteHistoryBatch using", "namespace", cfg.ns, "database", req.SchemaName)

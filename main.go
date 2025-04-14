@@ -28,7 +28,10 @@ func main() {
 		if jsonErr != nil {
 			panic(fmt.Errorf("unable to marshal error %q due to %q", err, jsonErr))
 		}
-		fmt.Fprintf(os.Stdout, "%s", log)
+		_, err := fmt.Fprintf(os.Stdout, "%s", log)
+		if err != nil {
+			panic(fmt.Errorf("unable to write error %q due to %q", err, err))
+		}
 	}
 
 	flag.Parse()
