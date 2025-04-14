@@ -4,3 +4,4 @@
 *.log
 /tests/destination-data/*.csv.zstd.aes
 /tests/destination-data/input_case*.json
+/tests/destination-data/configuration.json

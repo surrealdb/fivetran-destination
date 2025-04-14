@@ -56,18 +56,8 @@ func main() {
 	}
 
 	// Get SurrealDB connection details from environment variables
-	url := os.Getenv("SURREALDB_URL")
-	if url == "" {
-		url = "ws://localhost:8000/rpc"
-	}
-	username := os.Getenv("SURREALDB_USERNAME")
-	if username == "" {
-		username = "root"
-	}
-	password := os.Getenv("SURREALDB_PASSWORD")
-	if password == "" {
-		password = "root"
-	}
+	endpoint := os.Getenv("SURREALDB_ENDPOINT")
+	token := os.Getenv("SURREALDB_TOKEN")
 	namespace := os.Getenv("SURREALDB_NAMESPACE")
 	if namespace == "" {
 		namespace = "test"
@@ -77,10 +67,19 @@ func main() {
 		database = "test"
 	}
 
+	if !strings.HasSuffix(endpoint, "/rpc") {
+		endpoint = endpoint + "/rpc"
+	}
+
+	// If endpoint is not set, fall back to local instance
+	if endpoint == "" {
+		endpoint = "ws://localhost:8000/rpc"
+	}
+
 	// Connect to SurrealDB
-	db, err := surrealdb.New(url)
+	db, err := surrealdb.New(endpoint)
 	if err != nil {
-		log.Fatalf("Error connecting to SurrealDB: %v", err)
+		log.Fatalf("Error connecting to SurrealDB at %s: %v", endpoint, err)
 	}
 	defer db.Close()
 
@@ -90,19 +89,37 @@ func main() {
 		log.Fatalf("Error selecting namespace/database: %v", err)
 	}
 
-	// Sign in
-	token, err := db.Signin(map[string]interface{}{
-		"user": username,
-		"pass": password,
-	})
-	if err != nil {
-		log.Fatalf("Error signing in to SurrealDB: %v", err)
-	}
+	if token != "" {
+		// If token is provided, use it for authentication
+		_, err = db.Authenticate(token)
+		if err != nil {
+			log.Fatalf("Error authenticating with token: %v", err)
+		}
+	} else {
+		// Otherwise use username/password authentication
+		username := os.Getenv("SURREALDB_USERNAME")
+		if username == "" {
+			username = "root"
+		}
+		password := os.Getenv("SURREALDB_PASSWORD")
+		if password == "" {
+			password = "root"
+		}
 
-	// Authenticate the connection
-	_, err = db.Authenticate(token.(string))
-	if err != nil {
-		log.Fatalf("Error authenticating with SurrealDB: %v", err)
+		// Sign in
+		token, err := db.Signin(map[string]interface{}{
+			"user": username,
+			"pass": password,
+		})
+		if err != nil {
+			log.Fatalf("Error signing in to SurrealDB: %v", err)
+		}
+
+		// Authenticate the connection
+		_, err = db.Authenticate(token.(string))
+		if err != nil {
+			log.Fatalf("Error authenticating with SurrealDB: %v", err)
+		}
 	}
 
 	// Truncate tables

@@ -38,10 +38,11 @@ func (c *config) validate() error {
 // parseConfig parses the Fivetran connector configuration and returns a config instance
 func (s *Server) parseConfig(configuration map[string]string) (config, error) {
 	cfg := config{
-		url:  configuration["url"],
-		ns:   configuration["ns"],
-		user: configuration["user"],
-		pass: configuration["pass"],
+		url:   configuration["url"],
+		ns:    configuration["ns"],
+		user:  configuration["user"],
+		pass:  configuration["pass"],
+		token: configuration["token"],
 	}
 
 	if err := cfg.validate(); err != nil {

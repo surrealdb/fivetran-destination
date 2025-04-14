@@ -114,7 +114,7 @@ func (s *Server) Test(ctx context.Context, req *pb.TestRequest) (*pb.TestRespons
 	if err != nil {
 		return &pb.TestResponse{
 			Response: &pb.TestResponse_Failure{
-				Failure: err.Error(),
+				Failure: fmt.Sprintf("failed parsing test config: %v", err.Error()),
 			},
 		}, err
 	}
@@ -196,7 +196,7 @@ func (s *Server) CreateTable(ctx context.Context, req *pb.CreateTableRequest) (*
 		return &pb.CreateTableResponse{
 			Response: &pb.CreateTableResponse_Warning{
 				Warning: &pb.Warning{
-					Message: err.Error(),
+					Message: fmt.Sprintf("failed parsing create table config: %v", err.Error()),
 				},
 			},
 		}, err
@@ -260,7 +260,7 @@ func (s *Server) AlterTable(ctx context.Context, req *pb.AlterTableRequest) (*pb
 		return &pb.AlterTableResponse{
 			Response: &pb.AlterTableResponse_Warning{
 				Warning: &pb.Warning{
-					Message: err.Error(),
+					Message: fmt.Sprintf("failed parsing alter table config: %v", err.Error()),
 				},
 			},
 		}, err
@@ -358,7 +358,7 @@ func (s *Server) WriteBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb
 		return &pb.WriteBatchResponse{
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
-					Message: err.Error(),
+					Message: fmt.Sprintf("failed parsing write batch config: %v", err.Error()),
 				},
 			},
 		}, err
@@ -602,7 +602,7 @@ func (s *Server) WriteHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 		return &pb.WriteBatchResponse{
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
-					Message: err.Error(),
+					Message: fmt.Sprintf("failed parsing write history batch config: %v", err.Error()),
 				},
 			},
 		}, err

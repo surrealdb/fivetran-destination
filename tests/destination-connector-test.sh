@@ -13,17 +13,56 @@ echo "Starting SurrealDB Destination Connector Conformance Test"
 # Create data directory if it doesn't exist
 mkdir -p "$(pwd)/destination-data"
 
-# Check if SurrealDB is running
-echo "Checking if SurrealDB is running..."
-if ! curl -s http://localhost:8000/health > /dev/null; then
-    echo "SurrealDB is not running. Starting SurrealDB..."
-    docker run -d --name surrealdb-test \
-      -p 8000:8000 \
-      surrealdb/surrealdb:$SURREALDB_TAG start --user root --pass root
-    sleep 5
-    echo "SurrealDB started."
+# Check if we're using a remote SurrealDB instance
+if [ -n "$SURREALDB_ENDPOINT" ] && [ -n "$SURREALDB_TOKEN" ]; then
+    echo "Using remote SurrealDB instance at $SURREALDB_ENDPOINT"
+    # Check if remote SurrealDB is accessible
+    echo "Checking if remote SurrealDB is accessible..."
+    if ! docker run -it --rm surrealdb/surrealdb:$SURREALDB_TAG isready --endpoint "$SURREALDB_ENDPOINT" > /dev/null 2>&1; then
+        echo "Remote SurrealDB is not accessible. Please check your connection and credentials."
+        exit 1
+    fi
+    echo "Remote SurrealDB is accessible."
+
+    # Generate configuration.json for remote instance
+    echo "Generating configuration.json for remote instance..."
+    # Ensure endpoint has /rpc suffix
+    if [[ ! "$SURREALDB_ENDPOINT" == */rpc ]]; then
+        SURREALDB_ENDPOINT="${SURREALDB_ENDPOINT}/rpc"
+    fi
+    cat > "$(pwd)/destination-data/configuration.json" << EOF
+{
+  "url": "$SURREALDB_ENDPOINT",
+  "ns": "${SURREALDB_NAMESPACE:-testns}",
+  "db": "${SURREALDB_DATABASE:-tester}",
+  "token": "$SURREALDB_TOKEN"
+}
+EOF
 else
-    echo "SurrealDB is already running."
+    # Check if local SurrealDB is running
+    echo "Checking if local SurrealDB is running..."
+    if ! docker run -it --rm surrealdb/surrealdb:$SURREALDB_TAG isready --endpoint http://localhost:8000 > /dev/null 2>&1; then
+        echo "SurrealDB is not running. Starting SurrealDB..."
+        docker run -d --name surrealdb-test \
+          -p 8000:8000 \
+          surrealdb/surrealdb:$SURREALDB_TAG start --user root --pass root
+        sleep 5
+        echo "SurrealDB started."
+    else
+        echo "SurrealDB is already running."
+    fi
+
+    # Generate configuration.json for local instance
+    echo "Generating configuration.json for local instance..."
+    cat > "$(pwd)/destination-data/configuration.json" << EOF
+{
+  "url": "ws://localhost:8000/rpc",
+  "ns": "${SURREALDB_NAMESPACE:-testns}",
+  "db": "${SURREALDB_DATABASE:-tester}",
+  "user": "root",
+  "pass": "root"
+}
+EOF
 fi
 
 # Function to start the connector
@@ -37,17 +76,12 @@ start_connector() {
             cd tests
         fi
         # Run the container with environment variables and network settings
-        #
-        # Note that this exposes 50052 to the host thanks to `--network host` and the --port flag
-        # specified in the Dockerfile
-        #
-        # Also noet that the mount target needs to be the absolute path to the destination-data directory
-        # rather than "/data", because it needs to correlate with the WORKING_DIR environment variable
-        # specified in the destination connector tester container!
         docker run -d --name connector-test \
             --mount type=bind,source="$(pwd)/destination-data",target="$(pwd)/destination-data" \
             --network host \
             -e SURREAL_FIVETRAN_DEBUG="${SURREAL_FIVETRAN_DEBUG:-}" \
+            -e SURREALDB_ENDPOINT="${SURREALDB_ENDPOINT:-}" \
+            -e SURREALDB_TOKEN="${SURREALDB_TOKEN:-}" \
             -p 50052:50052 \
             fivetran-surrealdb-connector
         CONNECTOR_PID="docker"
@@ -55,7 +89,10 @@ start_connector() {
         echo "Starting connector directly..."
         cd "$(pwd)/.."
         go build -o bin/connector
-        SURREAL_FIVETRAN_DEBUG="${SURREAL_FIVETRAN_DEBUG:-}" ./bin/connector --port 50052 &
+        SURREAL_FIVETRAN_DEBUG="${SURREAL_FIVETRAN_DEBUG:-}" \
+        SURREALDB_ENDPOINT="${SURREALDB_ENDPOINT:-}" \
+        SURREALDB_TOKEN="${SURREALDB_TOKEN:-}" \
+        ./bin/connector --port 50052 &
         CONNECTOR_PID=$!
         cd tests
     fi
@@ -77,8 +114,13 @@ stop_connector() {
 cleanup_docker() {
     if [ "$USE_DOCKER" = "true" ]; then
         echo "Cleaning up Docker resources..."
-        docker stop connector-test surrealdb-test || true
-        docker rm connector-test surrealdb-test || true
+        docker stop connector-test || true
+        docker rm connector-test || true
+        # Only stop local SurrealDB if we're not using a remote instance
+        if [ -z "$SURREALDB_ENDPOINT" ] || [ -z "$SURREALDB_TOKEN" ]; then
+            docker stop surrealdb-test || true
+            docker rm surrealdb-test || true
+        fi
     fi
 }
 
@@ -119,7 +161,10 @@ run_test_case() {
     cd db-truncate
     go build -o ../bin/db-truncate
     cd ..
-    SURREALDB_NAMESPACE=testns SURREALDB_DATABASE=tester ./bin/db-truncate -f "$case_dir/expected.yaml"
+    SURREALDB_NAMESPACE=testns SURREALDB_DATABASE=tester \
+    SURREALDB_ENDPOINT="${SURREALDB_ENDPOINT:-}" \
+    SURREALDB_TOKEN="${SURREALDB_TOKEN:-}" \
+    ./bin/db-truncate -f "$case_dir/expected.yaml"
     echo "Tables truncated successfully."
 
     # Check if Docker is authenticated with Google Artifact Registry
@@ -153,7 +198,10 @@ run_test_case() {
     
     # Store the validation result
     local validation_result=0
-    SURREALDB_NAMESPACE=testns SURREALDB_DATABASE=tester ./bin/db-validator "$case_dir/expected.yaml" || validation_result=$?
+    SURREALDB_NAMESPACE=testns SURREALDB_DATABASE=tester \
+    SURREALDB_ENDPOINT="${SURREALDB_ENDPOINT:-}" \
+    SURREALDB_TOKEN="${SURREALDB_TOKEN:-}" \
+    ./bin/db-validator "$case_dir/expected.yaml" || validation_result=$?
 
     # Always dump logs regardless of validation result
     echo "Dumping connector logs..."

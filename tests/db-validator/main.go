@@ -18,18 +18,8 @@ type DBValidator struct {
 
 func NewDBValidator() (*DBValidator, error) {
 	// Get SurrealDB connection details from environment variables
-	url := os.Getenv("SURREALDB_URL")
-	if url == "" {
-		url = "ws://localhost:8000/rpc"
-	}
-	username := os.Getenv("SURREALDB_USERNAME")
-	if username == "" {
-		username = "root"
-	}
-	password := os.Getenv("SURREALDB_PASSWORD")
-	if password == "" {
-		password = "root"
-	}
+	endpoint := os.Getenv("SURREALDB_ENDPOINT")
+	token := os.Getenv("SURREALDB_TOKEN")
 	namespace := os.Getenv("SURREALDB_NAMESPACE")
 	if namespace == "" {
 		namespace = "test"
@@ -39,7 +29,12 @@ func NewDBValidator() (*DBValidator, error) {
 		database = "test"
 	}
 
-	db, err := surrealdb.New(url)
+	// If endpoint is not set, fall back to local instance
+	if endpoint == "" {
+		endpoint = "ws://localhost:8000/rpc"
+	}
+
+	db, err := surrealdb.New(endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to SurrealDB: %v", err)
 	}
@@ -48,19 +43,36 @@ func NewDBValidator() (*DBValidator, error) {
 		return nil, fmt.Errorf("failed to use namespace and database: %v", err)
 	}
 
-	// Sign in as a namespace, database, or root user
-	auth := &surrealdb.Auth{
-		Username: username,
-		Password: password,
-	}
-	token, err := db.SignIn(auth)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign in to SurrealDB: %v", err)
-	}
+	if token != "" {
+		// If token is provided, use it for authentication
+		if err := db.Authenticate(token); err != nil {
+			return nil, fmt.Errorf("failed to authenticate with token: %v", err)
+		}
+	} else {
+		// Otherwise use username/password authentication
+		username := os.Getenv("SURREALDB_USERNAME")
+		if username == "" {
+			username = "root"
+		}
+		password := os.Getenv("SURREALDB_PASSWORD")
+		if password == "" {
+			password = "root"
+		}
 
-	// Authenticate the connection
-	if err := db.Authenticate(token); err != nil {
-		return nil, fmt.Errorf("failed to authenticate with SurrealDB: %v", err)
+		// Sign in as a namespace, database, or root user
+		auth := &surrealdb.Auth{
+			Username: username,
+			Password: password,
+		}
+		token, err := db.SignIn(auth)
+		if err != nil {
+			return nil, fmt.Errorf("failed to sign in to SurrealDB: %v", err)
+		}
+
+		// Authenticate the connection
+		if err := db.Authenticate(token); err != nil {
+			return nil, fmt.Errorf("failed to authenticate with SurrealDB: %v", err)
+		}
 	}
 
 	return &DBValidator{db: db}, nil

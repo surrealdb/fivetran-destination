@@ -34,7 +34,7 @@ var ErrTableNotFound = fmt.Errorf("table not found")
 func (s *Server) infoForTable(schemaName string, tableName string, configuration map[string]string) (tableInfo, error) {
 	cfg, err := s.parseConfig(configuration)
 	if err != nil {
-		return tableInfo{}, err
+		return tableInfo{}, fmt.Errorf("failed parsing info for table config: %v", err.Error())
 	}
 
 	db, err := s.connect(cfg, schemaName)
