@@ -22,7 +22,7 @@ func TestFivetranFileReading(t *testing.T) {
 	key := []byte("0123456789abcdef0123456789abcdef")
 	data := []byte("Hello, World!")
 
-	tmpFile, compressed, ivWithData := createEncryptedZstdFile(t, key, data)
+	tmpFile, compressed, _, ivWithData := createEncryptedZstdFile(t, key, data)
 
 	log.Printf("compressed: %v", compressed)
 	log.Printf("ivWithData: %v", ivWithData)
@@ -52,7 +52,7 @@ func TestCreateEncryptedZstdFile(t *testing.T) {
 	key := []byte("0123456789abcdef0123456789abcdef")
 	data := []byte("Hello, World!")
 
-	tmpFile, c, e := createEncryptedZstdFile(t, key, data)
+	tmpFile, compressed, padded, e := createEncryptedZstdFile(t, key, data)
 	t.Cleanup(func() {
 		err := os.Remove(tmpFile)
 		if err != nil {
@@ -79,12 +79,14 @@ func TestCreateEncryptedZstdFile(t *testing.T) {
 	}
 
 	iv := make([]byte, aes.BlockSize)
+	iv = encrypted[:aes.BlockSize]
+	encrypted = encrypted[aes.BlockSize:]
 	stream := cipher.NewCBCDecrypter(block, iv)
 
 	decrypted := make([]byte, len(encrypted))
 	stream.CryptBlocks(decrypted, encrypted)
 
-	require.Equal(t, c, decrypted)
+	require.Equal(t, padded, decrypted)
 
 	// Trim trailing zeros
 	unpadded := bytes.TrimRight(decrypted, "\x00")
@@ -92,7 +94,7 @@ func TestCreateEncryptedZstdFile(t *testing.T) {
 	log.Printf("decrypted: %v", decrypted)
 	log.Printf("unpadded: %v", unpadded)
 
-	zstdReader, err := zstd.NewReader(bytes.NewReader(unpadded))
+	zstdReader, err := zstd.NewReader(bytes.NewReader(compressed))
 	if err != nil {
 		t.Fatalf("failed to create zstd reader: %v", err)
 	}
@@ -105,7 +107,7 @@ func TestCreateEncryptedZstdFile(t *testing.T) {
 	require.Equal(t, data, decompressed)
 }
 
-func createEncryptedZstdFile(t *testing.T, key []byte, data []byte) (string, []byte, []byte) {
+func createEncryptedZstdFile(t *testing.T, key []byte, data []byte) (string, []byte, []byte, []byte) {
 	compressed := bytes.NewBuffer(nil)
 	writer, err := zstd.NewWriter(compressed)
 	require.NoError(t, err)
@@ -125,9 +127,10 @@ func createEncryptedZstdFile(t *testing.T, key []byte, data []byte) (string, []b
 	padding := aes.BlockSize - (compressed.Len() % aes.BlockSize)
 	padded := make([]byte, compressed.Len()+padding)
 	copy(padded, compressed.Bytes())
-	// PKCS7 padding
-	for i := 0; i < padding; i++ {
-		padded[len(padded)-padding+i] = byte(0)
+	// The Fivetran padding? The last byte is the padding length.
+	padded[len(padded)-1] = byte(padding)
+	for i := len(compressed.Bytes()); i < len(padded)-1; i++ {
+		padded[i] = byte(0)
 	}
 	encrypted := make([]byte, len(padded))
 	stream.CryptBlocks(encrypted, padded)
@@ -152,7 +155,7 @@ func createEncryptedZstdFile(t *testing.T, key []byte, data []byte) (string, []b
 		}
 	})
 
-	return tmpFile, compressed.Bytes(), ciphertext
+	return tmpFile, compressed.Bytes(), padded, ciphertext
 }
 
 func TestBlockModeDecryptingReadCloser(t *testing.T) {
@@ -168,8 +171,9 @@ func TestBlockModeDecryptingReadCloser(t *testing.T) {
 	padding := aes.BlockSize - len(data)%aes.BlockSize
 	padded := make([]byte, len(data)+padding)
 	copy(padded, data)
-	for i := 0; i < padding; i++ {
-		padded[len(padded)-padding+i] = byte(0)
+	padded[len(padded)-1] = byte(padding)
+	for i := len(data); i < len(padded)-1; i++ {
+		padded[i] = byte(0)
 	}
 
 	encrypted := make([]byte, len(padded))
