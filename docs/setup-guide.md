@@ -41,8 +41,30 @@ To connect a SurrealDB to Fivetran, you need the following:
   - Any Fivetran Deployment will communicate with your Surreal Cloud instance over the Internet.
 2. Browse [the Instances page](https://surrealist.app/cloud/instances) and click one of your instances
 3. Click "Connect with Surreal CLI" and locate the command like `surreal sql --endpoint wss://YOUR_INSTANCE_HOSTNAME --token YOUR_TOKEN`
+4. Run the command, and set up your own `ACCESS` or `USER`. For testing purpose, creating `USER` like the below would work:
 
-Take notes of `wss://YOUR_INSTANCE_HOSTNAME` and `YOUR_TOKEN` in the shown command. You use those for Fivetran connector configuration's `url` and `token` settings, respectively.
+```
+USE NS your_ns;
+USE DB your_db;
+DEFINE USER your_user ON DATABASE PASSWORD "YourPassword" ROLES OWNER;
+```
+
+Ensure the user/pass working by running:
+
+```
+surreal sql --endpoint wss://YOUR_INSTANCE_HOSTNAME --user your_user --pass YourPassword --ns your_ns --db your_db
+```
+
+Now, take notes of the endpoint, user and pass you verified. You use those for Fivetran connector configuration's `url`, `user` and `pass` settings, respectively.
+
+5. If you prefer using `token`, we recommend `DEFINE ACCESS ... TYPE JWT`. Please refer to [the `DEFINE ACCESS > JWT` documentation](https://surrealdb.com/docs/surrealql/statements/define/access/jwt) to set the jwt access up.
+
+If you went to the token authentication path, please verify the token is working before proceeding to the next section, by running:
+
+```
+surreal sql --endpoint wss://YOUR_INSTANCE_HOSTNAME --token your_token --ns your_ns --db your_db
+```
+
 
 ### <span class="step-item"> Complete Fivetran configuration </span>
 
@@ -51,7 +73,7 @@ Take notes of `wss://YOUR_INSTANCE_HOSTNAME` and `YOUR_TOKEN` in the shown comma
 2. Go to the **Destinations** page and click **Add destination**.
 3. Enter a **Destination name** of your choice and then click **Add**.
 4. Select **SurrealDB** as the destination type.
-5. Put the `url` and `token` you found in the previous step
+5. Put the `url`, `user` and `pass` (or `token`) you verified in the previous step
 6. Click **Save & Test**.
 
    Fivetran [tests and validates](/docs/destinations/newdestination/setup-guide#setuptests) the SurrealDB connection. Upon successfully completing the setup tests, you can sync your data using Fivetran connectors to the SurrealDB destination.

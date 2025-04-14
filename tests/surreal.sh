@@ -9,4 +9,4 @@ if ! docker ps | grep -q surrealdb-test; then
 fi
 
 # Execute surreal sql command within the container
-docker exec -it surrealdb-test /surreal sql --user root --pass root --ns test --db test "$@" 
+docker exec -it surrealdb-test /surreal sql --user root --pass root --ns test --db test "$@"
