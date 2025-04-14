@@ -2,7 +2,6 @@ package connector
 
 import (
 	"fmt"
-	"log"
 	"strings"
 
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
@@ -77,7 +76,7 @@ func (s *Server) infoForTable(schemaName string, tableName string, configuration
 	fields := first.Result.Fields
 
 	if s.debugging() {
-		log.Printf("INFO FOR TABLE %s: %v", tableName, fields)
+		s.logDebug("INFO FOR TABLE", "table", tableName, "fields", fields)
 	}
 
 	columns := []columnInfo{}
@@ -113,7 +112,7 @@ func (s *Server) infoForTable(schemaName string, tableName string, configuration
 	// })
 
 	if s.debugging() {
-		log.Printf("COLUMNS: %v", columns)
+		s.logDebug("Ran info for table", "table", tableName, "columns", columns)
 	}
 
 	return tableInfo{

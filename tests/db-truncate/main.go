@@ -67,13 +67,13 @@ func main() {
 		database = "test"
 	}
 
-	if !strings.HasSuffix(endpoint, "/rpc") {
-		endpoint = endpoint + "/rpc"
-	}
-
 	// If endpoint is not set, fall back to local instance
 	if endpoint == "" {
 		endpoint = "ws://localhost:8000/rpc"
+	} else {
+		if !strings.HasSuffix(endpoint, "/rpc") {
+			endpoint = endpoint + "/rpc"
+		}
 	}
 
 	// Connect to SurrealDB

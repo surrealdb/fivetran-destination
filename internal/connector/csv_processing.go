@@ -14,7 +14,11 @@ func (s *Server) processCSVRecords(files []string, fileParams *pb.FileParams, ke
 		if err != nil {
 			return fmt.Errorf("failed to open fivetran file: %w", err)
 		}
-		defer r.Close()
+		defer func() {
+			if err := r.Close(); err != nil {
+				s.logWarning("failed to close fivetran file", err)
+			}
+		}()
 
 		cr := csv.NewReader(r)
 

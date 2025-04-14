@@ -3,10 +3,11 @@ package connector
 import (
 	"context"
 	"fmt"
-	"log"
+	"os"
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog"
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
 	"github.com/surrealdb/surrealdb.go"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
@@ -14,9 +15,20 @@ import (
 	_ "google.golang.org/grpc/encoding/gzip"
 )
 
-func NewServer() *Server {
+func LoggerFromEnv() (zerolog.Logger, error) {
+	level := zerolog.InfoLevel
+	if os.Getenv("SURREAL_FIVETRAN_DEBUG") != "" {
+		level = zerolog.DebugLevel
+	}
+	return initLogger(nil, level), nil
+}
+
+func NewServer(logger zerolog.Logger) *Server {
 	return &Server{
 		mu: &sync.Mutex{},
+		Logging: &Logging{
+			logger: logger,
+		},
 	}
 }
 
@@ -25,6 +37,8 @@ type Server struct {
 
 	connection *surrealdb.DB
 	mu         *sync.Mutex
+
+	*Logging
 }
 
 // ConfigurationForm implements the ConfigurationForm method required by the DestinationConnectorServer interface
@@ -86,7 +100,9 @@ func (s *Server) ConfigurationForm(ctx context.Context, req *pb.ConfigurationFor
 		Label: "Database Connection",
 	})
 
-	log.Printf("ConfigurationForm called")
+	if s.debugging() {
+		s.logDebug("ConfigurationForm called")
+	}
 	return &pb.ConfigurationFormResponse{
 		Fields: fields,
 		Tests:  tests,
@@ -95,7 +111,9 @@ func (s *Server) ConfigurationForm(ctx context.Context, req *pb.ConfigurationFor
 
 // Capabilities implements the Capabilities method required by the DestinationConnectorServer interface
 func (s *Server) Capabilities(ctx context.Context, req *pb.CapabilitiesRequest) (*pb.CapabilitiesResponse, error) {
-	log.Printf("Capabilities called")
+	if s.debugging() {
+		s.logDebug("Capabilities called")
+	}
 	return &pb.CapabilitiesResponse{
 		// TODO: Parquet support?
 		BatchFileFormat: pb.BatchFileFormat_CSV,
@@ -108,10 +126,15 @@ func (s *Server) Capabilities(ctx context.Context, req *pb.CapabilitiesRequest) 
 // by trying to connect to the SurrealDB instance using the connection information
 // included in the configuration.
 func (s *Server) Test(ctx context.Context, req *pb.TestRequest) (*pb.TestResponse, error) {
-	log.Printf("Test called with config named %q: %v", req.Name, req.Configuration)
+	startTime := time.Now()
+	s.logDebug("Starting configuration test",
+		"config_name", req.Name,
+		"config", req.Configuration)
 
 	cfg, err := s.parseConfig(req.Configuration)
 	if err != nil {
+		s.logSevere("Failed to parse test configuration", err,
+			"config_name", req.Name)
 		return &pb.TestResponse{
 			Response: &pb.TestResponse_Failure{
 				Failure: fmt.Sprintf("failed parsing test config: %v", err.Error()),
@@ -120,12 +143,18 @@ func (s *Server) Test(ctx context.Context, req *pb.TestRequest) (*pb.TestRespons
 	}
 
 	if _, err := s.connect(cfg, ""); err != nil {
+		s.logSevere("Failed to connect to database", err,
+			"config_name", req.Name)
 		return &pb.TestResponse{
 			Response: &pb.TestResponse_Failure{
 				Failure: err.Error(),
 			},
 		}, err
 	}
+
+	s.logDebug("Finished configuration test",
+		"config_name", req.Name,
+		"duration_ms", time.Since(startTime).Milliseconds())
 
 	return &pb.TestResponse{
 		Response: &pb.TestResponse_Success{
@@ -137,7 +166,7 @@ func (s *Server) Test(ctx context.Context, req *pb.TestRequest) (*pb.TestRespons
 // DescribeTable implements the DescribeTable method required by the DestinationConnectorServer interface
 func (s *Server) DescribeTable(ctx context.Context, req *pb.DescribeTableRequest) (*pb.DescribeTableResponse, error) {
 	if s.debugging() {
-		log.Printf("DescribeTable called for schema %q table %q: %v", req.SchemaName, req.TableName, req.Configuration)
+		s.logDebug("DescribeTable called", "schema", req.SchemaName, "table", req.TableName, "config", req.Configuration)
 	}
 	tb, err := s.infoForTable(req.SchemaName, req.TableName, req.Configuration)
 	if err != nil {
@@ -159,7 +188,7 @@ func (s *Server) DescribeTable(ctx context.Context, req *pb.DescribeTableRequest
 	}
 
 	if s.debugging() {
-		log.Printf("infoForTable result: %v", tb)
+		s.logDebug("infoForTable result", "table_info", tb)
 	}
 
 	ftColumns, err := s.columnsFromSurrealToFivetran(tb.columns)
@@ -188,7 +217,7 @@ func (s *Server) DescribeTable(ctx context.Context, req *pb.DescribeTableRequest
 // CreateTable implements the CreateTable method required by the DestinationConnectorServer interface
 func (s *Server) CreateTable(ctx context.Context, req *pb.CreateTableRequest) (*pb.CreateTableResponse, error) {
 	if s.debugging() {
-		log.Printf("CreateTable called for schema: %s, table: %s", req.SchemaName, req.Table.Name)
+		s.logDebug("CreateTable called", "schema", req.SchemaName, "table", req.Table.Name)
 	}
 
 	cfg, err := s.parseConfig(req.Configuration)
@@ -239,7 +268,7 @@ func (s *Server) CreateTable(ctx context.Context, req *pb.CreateTableRequest) (*
 	}
 
 	if s.debugging() {
-		log.Printf("infoForTable result: %v", tbInfo)
+		s.logDebug("infoForTable result", "table_info", tbInfo)
 	}
 
 	return &pb.CreateTableResponse{
@@ -253,7 +282,7 @@ func (s *Server) CreateTable(ctx context.Context, req *pb.CreateTableRequest) (*
 // AlterTable implements the AlterTable method required by the DestinationConnectorServer interface
 func (s *Server) AlterTable(ctx context.Context, req *pb.AlterTableRequest) (*pb.AlterTableResponse, error) {
 	if s.debugging() {
-		log.Printf("AlterTable called for schema: %s, table: %s", req.SchemaName, req.Table.Name)
+		s.logDebug("AlterTable called", "schema", req.SchemaName, "table", req.Table.Name)
 	}
 	cfg, err := s.parseConfig(req.Configuration)
 	if err != nil {
@@ -267,7 +296,7 @@ func (s *Server) AlterTable(ctx context.Context, req *pb.AlterTableRequest) (*pb
 	}
 
 	if s.debugging() {
-		log.Printf("AlterTable config: %v", cfg)
+		s.logDebug("AlterTable config", "config", cfg)
 	}
 
 	db, err := s.connect(cfg, req.SchemaName)
@@ -304,7 +333,7 @@ func (s *Server) AlterTable(ctx context.Context, req *pb.AlterTableRequest) (*pb
 	}
 
 	if s.debugging() {
-		log.Printf("infoForTable result: %v", tbInfo)
+		s.logDebug("infoForTable result", "table_info", tbInfo)
 	}
 
 	return &pb.AlterTableResponse{
@@ -317,15 +346,15 @@ func (s *Server) AlterTable(ctx context.Context, req *pb.AlterTableRequest) (*pb
 // Truncate implements the Truncate method required by the DestinationConnectorServer interface
 func (s *Server) Truncate(ctx context.Context, req *pb.TruncateRequest) (*pb.TruncateResponse, error) {
 	if s.debugging() {
-		log.Printf("Truncate called for schema: %s, table: %s", req.SchemaName, req.TableName)
+		s.logDebug("Truncate called", "schema", req.SchemaName, "table", req.TableName)
 		// SyncedColumn is e.g. `_sivetran_synced` which is timestamp-like column/field
-		log.Printf("  SyncedColumn: %s", req.SyncedColumn)
+		s.logDebug("SyncedColumn", "column", req.SyncedColumn)
 		if req.Soft != nil {
 			// DeletedColumn is e.g. `_sivetran_deleted` which is bool-like column/field
-			log.Printf("  Soft.DeletedColumn: %s", req.Soft.DeletedColumn)
+			s.logDebug("Soft.DeletedColumn", "column", req.Soft.DeletedColumn)
 		}
 		if req.UtcDeleteBefore != nil {
-			log.Printf("  UtcDeleteBefore: %s", req.UtcDeleteBefore.AsTime().Format(time.RFC3339))
+			s.logDebug("UtcDeleteBefore", "time", req.UtcDeleteBefore.AsTime().Format(time.RFC3339))
 		}
 
 		// You usually do something like:
@@ -343,14 +372,16 @@ func (s *Server) Truncate(ctx context.Context, req *pb.TruncateRequest) (*pb.Tru
 // WriteBatch implements the WriteBatch method required by the DestinationConnectorServer interface
 func (s *Server) WriteBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb.WriteBatchResponse, error) {
 	if s.debugging() {
-		log.Printf("WriteBatch called for schema: %s, table: %s, config: %v", req.SchemaName, req.Table.Name, req.Configuration)
-		log.Printf("  Replace files: %d, Update files: %d, Delete files: %d",
-			len(req.ReplaceFiles), len(req.UpdateFiles), len(req.DeleteFiles))
-		log.Printf("  Keys: %v", req.Keys)
-		log.Printf("  FileParams.Compression: %v", req.FileParams.Compression)
-		log.Printf("  FileParams.Encryption: %v", req.FileParams.Encryption)
-		log.Printf("  FileParams.NullString: %v", req.FileParams.NullString)
-		log.Printf("  FileParams.UnmodifiedString: %v", req.FileParams.UnmodifiedString)
+		s.logDebug("WriteBatch called", "schema", req.SchemaName, "table", req.Table.Name, "config", req.Configuration)
+		s.logDebug("Replace files", "count", len(req.ReplaceFiles))
+		s.logDebug("Update files", "count", len(req.UpdateFiles))
+		s.logDebug("Delete files", "count", len(req.DeleteFiles))
+		s.logDebug("Keys", "keys", req.Keys)
+		s.logDebug("FileParams",
+			"compression", req.FileParams.Compression,
+			"encryption", req.FileParams.Encryption,
+			"null_string", req.FileParams.NullString,
+			"unmodified_string", req.FileParams.UnmodifiedString)
 	}
 
 	cfg, err := s.parseConfig(req.Configuration)
@@ -377,7 +408,7 @@ func (s *Server) WriteBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb
 	defer db.Close()
 
 	if s.debugging() {
-		log.Printf("WriteBatch using namespace %s and database %s", cfg.ns, req.SchemaName)
+		s.logDebug("WriteBatch using", "namespace", cfg.ns, "database", req.SchemaName)
 	}
 
 	tb, err := s.infoForTable(req.SchemaName, req.Table.Name, req.Configuration)
@@ -438,7 +469,7 @@ func (s *Server) batchReplace(db *surrealdb.DB, fields map[string]columnInfo, re
 	unmodifiedString := fileParams.UnmodifiedString
 	return s.processCSVRecords(replaceFiles, fileParams, keys, func(columns []string, record []string) error {
 		if s.debugging() {
-			log.Printf("  Replacing record: %v %v", columns, record)
+			s.logDebug("Replacing record", "columns", columns, "record", record)
 		}
 
 		values := make(map[string]string)
@@ -460,12 +491,16 @@ func (s *Server) batchReplace(db *surrealdb.DB, fields map[string]columnInfo, re
 		vars := map[string]interface{}{}
 		for k, v := range values {
 			if unmodifiedString != "" && v == unmodifiedString {
-				log.Printf("  Skipping column %s with value %s", k, v)
+				if s.debugging() {
+					s.logDebug("Skipping unmodified column", "column", k, "value", v)
+				}
 				continue
 			}
 
 			if k == "id" {
-				log.Printf("Skipping id")
+				if s.debugging() {
+					s.logDebug("Skipping id column")
+				}
 				continue
 			}
 
@@ -495,7 +530,7 @@ func (s *Server) batchReplace(db *surrealdb.DB, fields map[string]columnInfo, re
 		}
 
 		if s.debugging() {
-			log.Printf("  Replaced record %s with %v: %+v", thing, vars, *res)
+			s.logDebug("Replaced record", "thing", thing, "vars", vars, "result", *res)
 		}
 
 		return nil
@@ -508,7 +543,7 @@ func (s *Server) batchUpdate(db *surrealdb.DB, fields map[string]columnInfo, req
 
 	return s.processCSVRecords(req.UpdateFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
 		if s.debugging() {
-			log.Printf("  Updating record: %v %v", columns, record)
+			s.logDebug("Updating record", "columns", columns, "record", record)
 		}
 
 		values := make(map[string]string)
@@ -521,7 +556,9 @@ func (s *Server) batchUpdate(db *surrealdb.DB, fields map[string]columnInfo, req
 		vars := map[string]interface{}{}
 		for k, v := range values {
 			if unmodifiedString != "" && v == unmodifiedString {
-				log.Printf("  Skipping column %s with value %s", k, v)
+				if s.debugging() {
+					s.logDebug("Skipping unmodified column", "column", k, "value", v)
+				}
 				continue
 			}
 
@@ -546,7 +583,7 @@ func (s *Server) batchUpdate(db *surrealdb.DB, fields map[string]columnInfo, req
 		}
 
 		if s.debugging() {
-			log.Printf("  Updated record %s with %v: %+v", thing, vars, *res)
+			s.logDebug("Updated record", "thing", thing, "vars", vars, "result", *res)
 		}
 
 		return nil
@@ -557,7 +594,7 @@ func (s *Server) batchUpdate(db *surrealdb.DB, fields map[string]columnInfo, req
 func (s *Server) batchDelete(db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteBatchRequest) error {
 	return s.processCSVRecords(req.DeleteFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
 		if s.debugging() {
-			log.Printf("  Deleting record: %v %v", columns, record)
+			s.logDebug("Deleting record", "columns", columns, "record", record)
 		}
 
 		values := make(map[string]string)
@@ -579,7 +616,7 @@ func (s *Server) batchDelete(db *surrealdb.DB, fields map[string]columnInfo, req
 		}
 
 		if s.debugging() {
-			log.Printf("  Deleted record %s: %+v", thing, res)
+			s.logDebug("Deleted record", "thing", thing, "result", res)
 		}
 
 		return nil
@@ -588,13 +625,16 @@ func (s *Server) batchDelete(db *surrealdb.DB, fields map[string]columnInfo, req
 
 func (s *Server) WriteHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatchRequest) (*pb.WriteBatchResponse, error) {
 	if s.debugging() {
-		log.Printf("WriteHistoryBatch called for schema: %s, table: %s", req.SchemaName, req.Table.Name)
-		log.Printf("  Earliest start files: %d, Replace files: %d, Update files: %d, Delete files: %d",
-			len(req.EarliestStartFiles), len(req.ReplaceFiles), len(req.UpdateFiles), len(req.DeleteFiles))
-		log.Printf("  FileParams.Compression: %v", req.FileParams.Compression)
-		log.Printf("  FileParams.Encryption: %v", req.FileParams.Encryption)
-		log.Printf("  FileParams.NullString: %v", req.FileParams.NullString)
-		log.Printf("  FileParams.UnmodifiedString: %v", req.FileParams.UnmodifiedString)
+		s.logDebug("WriteHistoryBatch called", "schema", req.SchemaName, "table", req.Table.Name)
+		s.logDebug("Earliest start files", "count", len(req.EarliestStartFiles))
+		s.logDebug("Replace files", "count", len(req.ReplaceFiles))
+		s.logDebug("Update files", "count", len(req.UpdateFiles))
+		s.logDebug("Delete files", "count", len(req.DeleteFiles))
+		s.logDebug("FileParams",
+			"compression", req.FileParams.Compression,
+			"encryption", req.FileParams.Encryption,
+			"null_string", req.FileParams.NullString,
+			"unmodified_string", req.FileParams.UnmodifiedString)
 	}
 
 	cfg, err := s.parseConfig(req.Configuration)
@@ -621,7 +661,7 @@ func (s *Server) WriteHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 	defer db.Close()
 
 	if s.debugging() {
-		log.Printf("WriteHistoryBatch using namespace %s and database %s", cfg.ns, req.SchemaName)
+		s.logDebug("WriteHistoryBatch using", "namespace", cfg.ns, "database", req.SchemaName)
 	}
 
 	tb, err := s.infoForTable(req.SchemaName, req.Table.Name, req.Configuration)
@@ -689,14 +729,18 @@ func (s *Server) WriteHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 
 func (s *Server) batchProcessEarliestStartFiles(db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteHistoryBatchRequest) error {
 	return s.processCSVRecords(req.EarliestStartFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
-		log.Printf("  Processing earliest start file: %v %v", columns, record)
+		if s.debugging() {
+			s.logDebug("Processing earliest start file", "columns", columns, "record", record)
+		}
 
 		values := make(map[string]string)
 		for i, column := range columns {
 			values[column] = record[i]
 		}
 
-		log.Printf("  Earliest start record: values %v", values)
+		if s.debugging() {
+			s.logDebug("Earliest start record", "values", values)
+		}
 
 		// We have `id` and `_fivetran_start`.
 		// Let's remove everything all the records with the same `id`,
@@ -716,7 +760,9 @@ func (s *Server) batchProcessEarliestStartFiles(db *surrealdb.DB, fields map[str
 		vars := map[string]interface{}{}
 		for k, v := range values {
 			if k == "id" {
-				log.Printf("Skipping id")
+				if s.debugging() {
+					s.logDebug("Skipping id")
+				}
 				continue
 			}
 
@@ -747,7 +793,9 @@ func (s *Server) batchProcessEarliestStartFiles(db *surrealdb.DB, fields map[str
 			return fmt.Errorf("unable to upsert record %s: %w", thing, err)
 		}
 
-		log.Printf("  Removed records with id %s and _fivetran_start greater than %s: %+v", id, vars["_fivetran_start"], *res)
+		if s.debugging() {
+			s.logDebug("Removed records", "id", id, "_fivetran_start_gt", vars["_fivetran_start"], "result", *res)
+		}
 
 		return nil
 	})
@@ -756,7 +804,7 @@ func (s *Server) batchProcessEarliestStartFiles(db *surrealdb.DB, fields map[str
 func (s *Server) batchHistoryUpdate(db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteHistoryBatchRequest) error {
 	return s.processCSVRecords(req.UpdateFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
 		if s.debugging() {
-			log.Printf("  Processing update file: %v %v", columns, record)
+			s.logDebug("Processing update file", "columns", columns, "record", record)
 		}
 
 		values := make(map[string]string)
@@ -765,7 +813,7 @@ func (s *Server) batchHistoryUpdate(db *surrealdb.DB, fields map[string]columnIn
 		}
 
 		if s.debugging() {
-			log.Printf("  batchHistoryUpdate record: values %v", values)
+			s.logDebug("batchHistoryUpdate record", "values", values)
 		}
 
 		var id any
@@ -784,7 +832,9 @@ func (s *Server) batchHistoryUpdate(db *surrealdb.DB, fields map[string]columnIn
 		vars := map[string]interface{}{}
 		for k, v := range values {
 			if k == "id" {
-				log.Printf("Skipping id")
+				if s.debugging() {
+					s.logDebug("Skipping id")
+				}
 				continue
 			}
 
@@ -824,7 +874,7 @@ func (s *Server) batchHistoryUpdate(db *surrealdb.DB, fields map[string]columnIn
 		}
 
 		if s.debugging() {
-			log.Printf("  Added record %s with %v: %+v", thing, vars, *res)
+			s.logDebug("Added record", "thing", thing, "vars", vars, "result", *res)
 		}
 
 		return nil

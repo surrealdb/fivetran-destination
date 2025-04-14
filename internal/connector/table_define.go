@@ -2,7 +2,6 @@ package connector
 
 import (
 	"fmt"
-	"log"
 
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
 	"github.com/surrealdb/surrealdb.go"
@@ -28,13 +27,15 @@ func (s *Server) defineTable(db *surrealdb.DB, table *pb.Table) error {
 		return err
 	}
 
-	log.Printf("Defined table %s: %s", tb, query)
+	s.logInfo("Defined table", "table", tb, "query", query)
 
 	var historyMode bool
 
 	for _, c := range table.Columns {
 		if c.Name == "id" {
-			log.Printf("Skipping id")
+			if s.debugging() {
+				s.logDebug("Skipping id")
+			}
 			continue
 		}
 
@@ -54,8 +55,9 @@ func (s *Server) defineTable(db *surrealdb.DB, table *pb.Table) error {
 		if err := db.Send(&ver, "query", q); err != nil {
 			return err
 		}
-
-		log.Printf("Defined field %s for table %s: %s", c.Name, tb, q)
+		if s.debugging() {
+			s.logDebug("Defined field", "field", c.Name, "table", tb, "query", q)
+		}
 	}
 
 	if historyMode {
@@ -66,7 +68,9 @@ func (s *Server) defineTable(db *surrealdb.DB, table *pb.Table) error {
 		if err := db.Send(&ver, "query", q); err != nil {
 			return err
 		}
-		log.Printf("Defined fivetran_start field index for table %s: %s", tb, q)
+		if s.debugging() {
+			s.logDebug("Defined fivetran_start field index", "table", tb, "query", q)
+		}
 	}
 	return nil
 }

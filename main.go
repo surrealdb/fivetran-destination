@@ -1,10 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
 	"net"
+	"os"
 
 	"github.com/surrealdb/fivetran-destination/internal/connector"
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
@@ -17,10 +18,23 @@ var (
 )
 
 func main() {
+	logger, err := connector.LoggerFromEnv()
+	if err != nil {
+		log, jsonErr := json.Marshal(map[string]interface{}{
+			"level":          "SEVERE",
+			"message":        fmt.Sprintf("failed to create logger: %v", err),
+			"message-origin": "sdk_destination",
+		})
+		if jsonErr != nil {
+			panic(fmt.Errorf("unable to marshal error %q due to %q", err, jsonErr))
+		}
+		fmt.Fprintf(os.Stdout, "%s", log)
+	}
+
 	flag.Parse()
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		logger.Error().Err(err).Msg("failed to listen")
 	}
 
 	// Create a new gRPC server with increased message size limits
@@ -28,12 +42,12 @@ func main() {
 		grpc.MaxRecvMsgSize(1024*1024*50), // 50MB
 		grpc.MaxSendMsgSize(1024*1024*50), // 50MB
 	)
-	srv := connector.NewServer()
+	srv := connector.NewServer(logger)
 
 	pb.RegisterDestinationConnectorServer(s, srv)
 
-	log.Printf("Starting SurrealDB destination connector on port %d", *port)
+	logger.Info().Int("port", *port).Msg("Starting SurrealDB destination connector")
 	if err := s.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
+		logger.Error().Err(err).Msg("failed to serve")
 	}
 }
