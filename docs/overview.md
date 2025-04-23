@@ -53,23 +53,14 @@ We do not support for the [Hybrid Deployment model](/docs/core-concepts/architec
 
 ------------------
 
-## Limitations (if applicable)
+## Limitations
 
-{Document the destination's limitations - for example, this destination does not support history mode.}
-
-------------------
-
-## Optimize {Destination} (if applicable)
-{List steps to optimize destination performance.}
+- `FLOAT` from sources takes same space as `DOUBLE` in some sense, as SurrealDB offers `float` which is 64-bit
+- We have not tested this for every source Fivetran supports. That said, there may be edge-cases that something that should work does not work. Please report us if you encounter any sync failures that shouldn't happen in theory.
 
 ------------------
 
-## Data load costs
+## Optimize SurrealDB Destination
 
-List any additional cost info our customers need to know.
-------------------
-
-## Migrate destinations {This is an example section}
-
-1. Enumerate the steps.
-2. Use screenshots if necessary.
+- The connector is designed carefully so that it balances the load on the connector and on the target SurrealDB. For example, it prefers smaller transactions over big ones, so that it does not consume large memory temporarily when syncing many items.
+- That said, if you encounter sync slowness or timeouts while syncing, failing SurrealDB when syncing large volume of data, and so on, you should consider giving more resources to the target SurrealDB instance. Use larger instance types if you're on some IaaS. Use larger instance type if you're on Surreal Cloud.
