@@ -2,6 +2,7 @@ package connector
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -86,6 +87,17 @@ var typeMappings = []typeMapping{
 		ft:  pb.DataType_UTC_DATETIME,
 		surrealType: func(v string) (interface{}, error) {
 			return time.Parse(time.RFC3339, v)
+		},
+	},
+	{
+		sdb: "object",
+		ft:  pb.DataType_JSON,
+		surrealType: func(v string) (interface{}, error) {
+			m := map[string]interface{}{}
+			if err := json.Unmarshal([]byte(v), &m); err != nil {
+				return nil, err
+			}
+			return m, nil
 		},
 	},
 }

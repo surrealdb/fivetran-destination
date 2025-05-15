@@ -20,7 +20,7 @@ func (s *Server) connect(cfg config, schema string) (*surrealdb.DB, error) {
 	//
 	// If you read this connector's implementation,
 	// you'll notice Fivetran calls our RPCs like `hey, create a table named <schema>.<table>`,
-	// and we interpret it as `ok let's create a table <table> in namespace <schema>`.
+	// and we interpret it as `ok let's create a table <table> in database <schema>`.
 	if err := db.Use(cfg.ns, schema); err != nil {
 		return nil, fmt.Errorf("failed to use namespace %s: %w", cfg.ns, err)
 	}
