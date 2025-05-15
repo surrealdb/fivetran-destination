@@ -55,6 +55,7 @@ We do not support for the [Hybrid Deployment model](/docs/core-concepts/architec
 
 ## Limitations
 
+- [History Mode](https://fivetran.com/docs/core-concepts/sync-modes/history-mode) is implemented but not working properly. We'll fix it soon
 - `FLOAT` from sources takes same space as `DOUBLE` in some sense, as SurrealDB offers `float` which is 64-bit
 - We have not tested this for every source Fivetran supports. That said, there may be edge-cases that something that should work does not work. Please report us if you encounter any sync failures that shouldn't happen in theory.
 
