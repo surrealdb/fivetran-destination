@@ -45,9 +45,20 @@ To connect a SurrealDB to Fivetran, you need the following:
 
 ```
 USE NS your_ns;
-USE DB your_db;
-DEFINE USER your_user ON DATABASE PASSWORD "YourPassword" ROLES OWNER;
+DEFINE DATABASE IF NOT EXISTS your_db;
+DEFINE USER your_user ON ROOT PASSWORD "YourPassword" ROLES OWNER;
 ```
+
+> Note we use a namespace-level user here.
+>
+> Put another way, do not create a database-level user by using `DEFINE USER ~ ON DATABASE` here.
+> It would result in the initial Fivetran connection test failing with `failed to sign in to SurrealDB` after the destination connector creation.
+> That's because the database - schema name in Fivetran terminology - is not fixed yet and
+> hence empty when Fivetran conducts an initial connection test.
+
+> Note that we don't currently support namespave-level users created by using `DEFINE USER ~ ON NAMESPACE`.
+> If you tried to set up the destination connector using a namespace-level user,
+> you'll get a `failed to authenticate with SurrealDB` error.
 
 Ensure the user/pass working by running:
 
