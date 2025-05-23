@@ -2,6 +2,7 @@ package connector
 
 import (
 	"fmt"
+	"strings"
 
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
 	"github.com/surrealdb/surrealdb.go"
@@ -70,10 +71,34 @@ func (s *Server) defineTable(db *surrealdb.DB, table *pb.Table) error {
 		if s.debugging() {
 			s.logDebug("Defined fivetran_start field index", "table", tb, "query", q)
 		}
+
+		q, err = s.defineFivetranPKIndex(table)
+		if err != nil {
+			return err
+		}
+		if err := db.Send(&ver, "query", q); err != nil {
+			return err
+		}
+		if s.debugging() {
+			s.logDebug("Defined pkcol index", "table", tb, "query", q)
+		}
 	}
 	return nil
 }
 
 func (s *Server) defineFivetranStartFieldIndex(tb string) (string, error) {
-	return fmt.Sprintf(`DEFINE INDEX IF NOT EXISTS %s ON %s FIELDS _fivetran_start;`, tb, tb), nil
+	return fmt.Sprintf(`DEFINE INDEX %s ON %s FIELDS _fivetran_start;`, tb, tb), nil
+}
+
+func (s *Server) defineFivetranPKIndex(table *pb.Table) (string, error) {
+	var pkFields []string
+	for _, c := range table.Columns {
+		if c.PrimaryKey {
+			pkFields = append(pkFields, c.Name)
+		}
+	}
+	if len(pkFields) == 0 {
+		return "", fmt.Errorf("no primary key columns found for table %s", table.Name)
+	}
+	return fmt.Sprintf(`DEFINE INDEX %s_pkcol ON %s FIELDS %s;`, table.Name, table.Name, strings.Join(pkFields, ", ")), nil
 }

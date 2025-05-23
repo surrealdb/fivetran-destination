@@ -24,12 +24,32 @@ func (sv *SurrealValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if m, ok := raw.(map[string]interface{}); ok {
 		// Check for RecordID type
 		if table, ok := m["table"].(string); ok {
-			if id, ok := m["id"].(string); ok {
+			switch id := m["id"].(type) {
+			case string:
 				sv.Value = models.RecordID{
 					Table: table,
 					ID:    id,
 				}
 				return nil
+			case []any:
+				sv.Value = models.RecordID{
+					Table: table,
+					ID:    id,
+				}
+				return nil
+			default:
+				return fmt.Errorf("invalid id type: %T", id)
+			}
+		}
+
+		if intlike, ok := m["uint64"]; ok {
+			switch v := intlike.(type) {
+			case int:
+				casted := (uint64)(v)
+				sv.Value = casted
+				return nil
+			default:
+				return fmt.Errorf("invalid intlike type: %T", intlike)
 			}
 		}
 

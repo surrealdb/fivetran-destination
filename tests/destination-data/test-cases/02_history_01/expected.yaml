@@ -1,0 +1,100 @@
+tables:
+  transaction:
+    - _fivetran_active: false
+      _fivetran_end:
+        time: "2005-05-24T20:57:59Z"
+      _fivetran_start:
+        time: "2005-05-23T20:57:00Z"
+      _fivetran_synced:
+        recent-enough:
+          within: 30s
+      myid:
+        uint64: 1
+      id:
+        table: transaction
+        id: ["1", "2005-05-23T20:57:00Z"]
+      amount: 100.0
+    - _fivetran_active: true
+      _fivetran_end:
+        time: "9999-12-31T23:59:59Z"
+      _fivetran_start:
+        time: "2005-05-24T20:58:00Z"
+      _fivetran_synced:
+        recent-enough:
+          within: 30s
+      myid:
+        uint64: 1
+      id:
+        table: transaction
+        id: ["1", "2005-05-24T20:58:00Z"]
+      amount: 101.0
+    - _fivetran_active: false
+      _fivetran_end:
+        time: "2005-05-24T20:57:59Z"
+      _fivetran_start:
+        time: "2005-05-23T20:57:00Z"
+      _fivetran_synced:
+        recent-enough:
+          within: 30s
+      myid:
+        uint64: 2
+      id:
+        table: transaction
+        id: ["2", "2005-05-23T20:57:00Z"]
+      amount: 200.0
+    - _fivetran_active: true
+      _fivetran_end:
+        time: "9999-12-31T23:59:59Z"
+      _fivetran_start:
+        time: "2005-05-24T20:58:00Z"
+      _fivetran_synced:
+        recent-enough:
+          within: 30s
+      myid:
+        uint64: 2
+      id:
+        table: transaction
+        id: ["2", "2005-05-24T20:58:00Z"]
+      amount: 201.0
+    - _fivetran_active: false
+      _fivetran_end:
+        time: "2005-05-24T20:58:59Z"
+      _fivetran_start:
+        time: "2005-05-23T20:57:00Z"
+      _fivetran_synced:
+        recent-enough:
+          within: 30s
+      myid:
+        uint64: 3
+      id:
+        table: transaction
+        id: ["3", "2005-05-23T20:57:00Z"]
+      amount: 300.0
+    - _fivetran_active: true
+      _fivetran_end:
+        time: "9999-12-31T23:59:59Z"
+      _fivetran_start:
+        time: "2005-05-24T20:59:00Z"
+      _fivetran_synced:
+        recent-enough:
+          within: 30s
+      myid:
+        uint64: 3
+      id:
+        table: transaction
+        id: ["3", "2005-05-24T20:59:00Z"]
+      amount: 301.0
+    - _fivetran_active: true
+      _fivetran_end:
+        time: "9999-12-31T23:59:59Z"
+      _fivetran_start:
+        time: "2005-05-23T20:57:00Z"
+      _fivetran_synced:
+        recent-enough:
+          within: 30s
+      myid:
+        uint64: 4
+      id:
+        table: transaction
+        id: ["4", "2005-05-23T20:57:00Z"]
+      amount: 400.0

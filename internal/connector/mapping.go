@@ -95,7 +95,7 @@ var typeMappings = []typeMapping{
 		surrealType: func(v string) (interface{}, error) {
 			m := map[string]interface{}{}
 			if err := json.Unmarshal([]byte(v), &m); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("surrealType(object): %w", err)
 			}
 			return m, nil
 		},

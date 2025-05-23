@@ -1,0 +1,46 @@
+{
+   "create_table" : {
+      "transaction": {
+         "columns": {
+            "amount" : "DOUBLE"
+         },
+         "history_mode": false
+      }
+   },
+   "describe_table" : [
+      "transaction"
+   ],
+   "ops" : [
+      {
+         "upsert": {
+            "transaction": [
+               {"_fivetran_id":"txn1", "amount": 101},
+               {"_fivetran_id":"txn4", "amount": 104}
+            ]
+         }
+      },
+      {
+         "update": {
+            "transaction": [
+               {"_fivetran_id":"txn1", "amount": 1010}
+            ]
+         }
+      },
+      {
+         "upsert": {
+            "transaction": [
+               {"_fivetran_id":"txn2", "amount": 102},
+               {"_fivetran_id":"txn3", "amount": 103}
+            ]
+         }
+      },
+      {
+         "soft_delete": {
+            "transaction": [
+               {"_fivetran_id":"txn1"},
+               {"_fivetran_id":"txn4"}
+            ]
+         }
+      }
+   ]
+}
