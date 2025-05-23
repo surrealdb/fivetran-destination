@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -1045,31 +1044,6 @@ func (s *Server) getPKColumnsAndValues(values map[string]string, table *pb.Table
 	}
 
 	return pkColumns, pkValues, nil
-}
-
-// Get a slice of the primary key values from the values map.
-// The values are sorted by the column name so that it does not depend on the order of the columns in the table definition.
-func (s *Server) getPKValues(values map[string]string, table *pb.Table) ([]any, error) {
-	var pkColumns []*pb.Column
-	for _, c := range table.Columns {
-		if c.PrimaryKey {
-			pkColumns = append(pkColumns, c)
-		}
-	}
-	if len(pkColumns) == 0 {
-		return nil, fmt.Errorf("no primary key columns found for table %s", table.Name)
-	}
-
-	sort.Slice(pkColumns, func(i, j int) bool {
-		return pkColumns[i].Name < pkColumns[j].Name
-	})
-
-	var pkValues []any
-	for _, pkColumn := range pkColumns {
-		pkValues = append(pkValues, values[pkColumn.Name])
-	}
-
-	return pkValues, nil
 }
 
 func (s *Server) upsertHistoryMode(db *surrealdb.DB, thing models.RecordID, vars map[string]interface{}) error {
