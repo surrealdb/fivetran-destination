@@ -629,7 +629,29 @@ func (s *Server) batchUpdate(db *surrealdb.DB, fields map[string]columnInfo, req
 			values[column] = record[i]
 		}
 
-		thing := fmt.Sprintf("%s:%s", req.Table.Name, values["_fivetran_id"])
+		// Note that the below is not correct!
+		// Although `table:id` is a valid record ID in SurrealQL,
+		// it's different from a string "table:id".
+		// If you created a record using db.Upsert(db, models.NewRecordID("mytb", "myid"), ...)
+		// and then tried to update using db.Update(db, "mytb:myid", ...), it doesn't work!
+		// You can notice it by seeing the result of the Update being `[[]]`, which indicates
+		// there was nothing to Update.
+		//
+		// thing := fmt.Sprintf("%s:%s", req.Table.Name, values["_fivetran_id"])
+
+		cols, vals, err := s.getPKColumnsAndValues(values, req.Table)
+		if err != nil {
+			return fmt.Errorf("unable to get primary key columns and values for record %v: %w", values, err)
+		}
+
+		var thing models.RecordID
+		if len(cols) == 1 {
+			thing = models.NewRecordID(req.Table.Name, vals[0])
+		} else {
+			thing = models.NewRecordID(req.Table.Name, vals)
+		}
+
+		var hasUnmodifiedColumns bool
 
 		vars := map[string]interface{}{}
 		for k, v := range values {
@@ -637,6 +659,7 @@ func (s *Server) batchUpdate(db *surrealdb.DB, fields map[string]columnInfo, req
 				if s.debugging() {
 					s.logDebug("Skipping unmodified column", "column", k, "value", v)
 				}
+				hasUnmodifiedColumns = true
 				continue
 			}
 
@@ -655,9 +678,22 @@ func (s *Server) batchUpdate(db *surrealdb.DB, fields map[string]columnInfo, req
 			vars[k] = typedV
 		}
 
-		res, err := surrealdb.Upsert[any](db, thing, vars)
-		if err != nil {
-			return err
+		var res *any
+		if hasUnmodifiedColumns {
+			if s.debugging() {
+				s.logDebug("Doing upsert-merge to deal with unmodified columns in update with soft-delete sync mode", "thing", thing, "vars", vars)
+			}
+			var r any
+			r, err = s.upsertMerge(db, thing, vars)
+			if err != nil {
+				return err
+			}
+			res = &r
+		} else {
+			res, err = surrealdb.Update[any](db, thing, vars)
+			if err != nil {
+				return err
+			}
 		}
 
 		if s.debugging() {
