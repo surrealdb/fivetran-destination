@@ -23,6 +23,10 @@ jobs:
           persist-credentials: false
           # Only fetch the PR branch, not the base branch
           fetch-depth: 0
+          # Along with "Require branches to be up to date before merging",
+          # this allows us to test the PR branch.
+          # See https://github.com/actions/checkout/issues/518
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Set up Go
         uses: actions/setup-go@v5
