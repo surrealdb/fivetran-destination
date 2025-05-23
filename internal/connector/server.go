@@ -557,16 +557,17 @@ func (s *Server) batchReplace(db *surrealdb.DB, fields map[string]columnInfo, re
 			values[column] = record[i]
 		}
 
-		var id any
-		if v, ok := values["_fivetran_id"]; ok {
-			id = v
-		} else if v, ok := values["id"]; ok {
-			id = v
-		} else {
-			return fmt.Errorf("id nor _fivetran_id not found in the record: %v", values)
+		cols, vals, err := s.getPKColumnsAndValues(values, table)
+		if err != nil {
+			return fmt.Errorf("unable to get primary key columns and values for record %v: %w", values, err)
 		}
 
-		thing := models.NewRecordID(table.Name, id)
+		var thing models.RecordID
+		if len(cols) == 1 {
+			thing = models.NewRecordID(table.Name, vals[0])
+		} else {
+			thing = models.NewRecordID(table.Name, vals)
+		}
 
 		vars := map[string]interface{}{}
 		for k, v := range values {
@@ -610,7 +611,7 @@ func (s *Server) batchReplace(db *surrealdb.DB, fields map[string]columnInfo, re
 		}
 
 		if s.debugging() {
-			s.logDebug("Replaced record", "thing", thing, "vars", vars, "result", *res)
+			s.logDebug("Replaced record", "values", values, "thing", thing, "vars", vars, "result", *res)
 		}
 
 		return nil
