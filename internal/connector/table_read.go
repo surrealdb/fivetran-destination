@@ -142,6 +142,8 @@ func (s *Server) columnsFromSurrealToFivetran(sColumns []columnInfo) ([]*pb.Colu
 			pbDataType = pb.DataType_BOOLEAN
 		case "datetime":
 			pbDataType = pb.DataType_UTC_DATETIME
+		case "object":
+			pbDataType = pb.DataType_JSON
 		default:
 			return nil, fmt.Errorf("columnsFromSurrealToFivetran: unsupported data type: %s", c.Type)
 		}
