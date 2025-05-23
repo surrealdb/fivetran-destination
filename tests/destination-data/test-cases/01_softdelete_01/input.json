@@ -1,0 +1,30 @@
+{
+   "create_table" : {
+      "transaction": {
+         "columns": {
+            "amount" : "DOUBLE"
+         },
+         "history_mode": false
+      }
+   },
+   "describe_table" : [
+      "transaction"
+   ],
+   "ops" : [
+      {
+         "upsert": {
+            "transaction": [
+               {"_fivetran_id":"txn1", "amount": 101},
+               {"_fivetran_id":"txn4", "amount": 104}
+            ]
+         }
+      },
+      {
+         "update": {
+            "transaction": [
+               {"_fivetran_id":"txn1", "amount": 1010}
+            ]
+         }
+      }
+   ]
+}

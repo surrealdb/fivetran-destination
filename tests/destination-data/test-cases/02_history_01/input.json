@@ -1,0 +1,52 @@
+{
+   "create_table" : {
+      "transaction": {
+         "columns": {
+            "myid": "INT",
+            "amount" : "DOUBLE"
+         },
+         "primary_key": ["myid"],
+         "history_mode": true
+      }
+   },
+   "alter_table" : {
+      "transaction": {
+         "columns": {
+            "myid": "INT",
+            "amount" : "FLOAT"
+         },
+         "primary_key": ["myid"],
+         "history_mode": true
+      }
+   },
+   "describe_table" : [
+      "transaction"
+   ],
+   "ops" : [
+      {
+         "upsert": {
+            "transaction": [
+               {"myid":1, "amount": 100, "op_time":"2005-05-23T20:57:00Z"},
+               {"myid":2, "amount": 200, "op_time":"2005-05-23T20:57:00Z"},
+               {"myid":3, "amount": 300, "op_time":"2005-05-23T20:57:00Z"},
+               {"myid":4, "amount": 400, "op_time":"2005-05-23T20:57:00Z"}
+            ]
+         }
+      },
+      {
+         "update": {
+            "transaction": [
+               {"myid":1, "amount": 101 ,"op_time":"2005-05-24T20:58:00Z"},
+               {"myid":2, "amount": 201 ,"op_time":"2005-05-24T20:58:00Z"}
+            ]
+         }
+      },
+      {
+         "upsert": {
+            "transaction": [
+               {"myid": 3, "amount": 301, "op_time":"2005-05-24T20:59:00Z"}
+            ]
+         }
+      }
+   ]
+} 

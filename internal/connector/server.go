@@ -801,6 +801,10 @@ func (s *Server) WriteHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 		fields[column.Name] = column
 	}
 
+	if s.debugging() {
+		s.logDebug("Batch processing earliest start files")
+	}
+
 	if err := s.batchProcessEarliestStartFiles(db, fields, req); err != nil {
 		return &pb.WriteBatchResponse{
 			Response: &pb.WriteBatchResponse_Warning{
@@ -809,6 +813,10 @@ func (s *Server) WriteHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 				},
 			},
 		}, err
+	}
+
+	if s.debugging() {
+		s.logDebug("Batch processing replace files")
 	}
 
 	if err := s.batchReplace(db, fields, req.ReplaceFiles, req.FileParams, req.Keys, req.Table); err != nil {
@@ -821,6 +829,10 @@ func (s *Server) WriteHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 		}, err
 	}
 
+	if s.debugging() {
+		s.logDebug("Batch processing update files")
+	}
+
 	if err := s.batchHistoryUpdate(db, fields, req); err != nil {
 		return &pb.WriteBatchResponse{
 			Response: &pb.WriteBatchResponse_Warning{
@@ -830,6 +842,11 @@ func (s *Server) WriteHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 			},
 		}, err
 	}
+
+	if s.debugging() {
+		s.logDebug("Batch processing delete files")
+	}
+
 	if err := s.batchReplace(db, fields, req.DeleteFiles, req.FileParams, req.Keys, req.Table); err != nil {
 		return &pb.WriteBatchResponse{
 			Response: &pb.WriteBatchResponse_Warning{
@@ -863,30 +880,16 @@ func (s *Server) batchProcessEarliestStartFiles(db *surrealdb.DB, fields map[str
 			s.logDebug("Earliest start record", "values", values)
 		}
 
-		// We have `id` and `_fivetran_start`.
-		// Let's remove everything all the records with the same `id`,
-		// whose `_fivetran_start` is GREATER THAN this `_fivetran_start`.
-
-		var id any
-		if v, ok := values["_fivetran_id"]; ok {
-			id = v
-		} else if v, ok := values["id"]; ok {
-			id = v
-		} else {
-			return fmt.Errorf("id nor _fivetran_id not found in the record: %v", values)
+		cols, _, err := s.getPKColumnsAndValues(values, req.Table)
+		if err != nil {
+			return fmt.Errorf("unable to get primary key columns and values for record %v: %w", values, err)
 		}
 
-		thing := models.NewRecordID(req.Table.Name, id)
+		// Let's remove everything all the records with the same primary key(s)
+		// whose `_fivetran_start` is GREATER THAN this `_fivetran_start`.
 
 		vars := map[string]interface{}{}
 		for k, v := range values {
-			if k == "id" {
-				if s.debugging() {
-					s.logDebug("Skipping id")
-				}
-				continue
-			}
-
 			f, ok := fields[k]
 			if !ok {
 				return fmt.Errorf("column %s not found in the table info: %v", k, fields)
@@ -903,19 +906,26 @@ func (s *Server) batchProcessEarliestStartFiles(db *surrealdb.DB, fields map[str
 		}
 
 		vars["tb"] = req.Table.Name
-		vars["rc"] = models.NewRecordID(req.Table.Name, id)
+
+		var conds []string
+
+		for _, col := range cols {
+			conds = append(conds, fmt.Sprintf("%s = $%s", col, col))
+		}
+
+		byID := strings.Join(conds, " AND ")
 
 		res, err := surrealdb.Query[any](
 			db,
-			"DELETE FROM type::table($tb) WHERE id = type::record($rc) AND _fivetran_start > type::datetime($_fivetran_start);",
+			"DELETE FROM type::table($tb) WHERE "+byID+" AND _fivetran_start > type::datetime($_fivetran_start);",
 			vars,
 		)
 		if err != nil {
-			return fmt.Errorf("unable to upsert record %s: %w", thing, err)
+			return fmt.Errorf("unable to delete from table %s: %w", req.Table.Name, err)
 		}
 
 		if s.debugging() {
-			s.logDebug("Removed records", "id", id, "_fivetran_start_gt", vars["_fivetran_start"], "result", *res)
+			s.logDebug("Removed records", "byID", byID, "_fivetran_start_gt", vars["_fivetran_start"], "result", *res)
 		}
 
 		return nil
@@ -979,40 +989,169 @@ func (s *Server) batchHistoryUpdate(db *surrealdb.DB, fields map[string]columnIn
 			vars[k] = typedV
 		}
 
-		// Get the preivous values to populate the fields with values set to the unmodeified string
-		previousFieldsAndValues, err := s.getPreviousValues(db, thing, unmodifiedFields)
+		cols, vals, err := s.getPKColumnsAndValues(values, req.Table)
 		if err != nil {
-			return fmt.Errorf("unable to get previous values for record %s: %w", thing, err)
+			return fmt.Errorf("unable to get primary key columns and values for record %s: %w", thing, err)
 		}
 
-		for k, v := range previousFieldsAndValues {
-			vars[k] = v
+		// There could be one or more unmodified fields even though
+		// it is the first time for Fivetran and the connector to upsert this record.
+		// We try to obtain the previous values from SurrealDB anyway.
+		// In case the record is not found, we are sure that the fields noted as unmodified are actually empty.
+		if len(unmodifiedFields) > 0 {
+			// Get the preivous values to populate the fields with values set to the unmodeified string
+			previousFieldsAndValues, err := s.getPreviousValues(db, unmodifiedFields, req.Table, cols, vals)
+			if err != nil {
+				return fmt.Errorf("unable to get previous values for record %s: %w", thing, err)
+			}
+
+			for k, v := range previousFieldsAndValues {
+				vars[k] = v
+			}
 		}
 
-		res, err := surrealdb.Upsert[any](db, thing, vars)
+		err = s.upsertHistoryMode(db, thing, vars)
 		if err != nil {
-			return fmt.Errorf("unable to upsert record %s: %w", thing, err)
-		}
-
-		if s.debugging() {
-			s.logDebug("Added record", "thing", thing, "vars", vars, "result", *res)
+			return fmt.Errorf("batchHistoryUpdate failed: %w", err)
 		}
 
 		return nil
 	})
 }
 
-func (s *Server) getPreviousValues(db *surrealdb.DB, thing models.RecordID, fields []string) (map[string]interface{}, error) {
+func (s *Server) getPKColumnsAndValues(values map[string]string, table *pb.Table) ([]string, []any, error) {
+	var pkColumns []string
+	for _, c := range table.Columns {
+		if c.PrimaryKey {
+			pkColumns = append(pkColumns, c.Name)
+		}
+	}
+
+	// Note that we intentionally do not sort the primary key columns.
+	// We assume Fivetran in history mode sends us primary key columns containing the primary key in the source
+	// along with _fivetran_start.
+	// In that case, I want to use [id_from_src, _fivetran_start] as the primary key assumng
+	// Fivetran gives us columns definitions in this specific order.
+	// If we sorted it like the below, we might end up with [_fivetran_start, id_from_src] as the primary key.
+	// That's not wrong but I think it's not intuitive from users perspective.
+	//
+	// sort.Slice(pkColumns, func(i, j int) bool {
+	// 	return pkColumns[i] < pkColumns[j]
+	// })
+
+	var pkValues []any
+	for _, pkColumn := range pkColumns {
+		pkValues = append(pkValues, values[pkColumn])
+	}
+
+	return pkColumns, pkValues, nil
+}
+
+// Get a slice of the primary key values from the values map.
+// The values are sorted by the column name so that it does not depend on the order of the columns in the table definition.
+func (s *Server) getPKValues(values map[string]string, table *pb.Table) ([]any, error) {
+	var pkColumns []*pb.Column
+	for _, c := range table.Columns {
+		if c.PrimaryKey {
+			pkColumns = append(pkColumns, c)
+		}
+	}
+	if len(pkColumns) == 0 {
+		return nil, fmt.Errorf("no primary key columns found for table %s", table.Name)
+	}
+
+	sort.Slice(pkColumns, func(i, j int) bool {
+		return pkColumns[i].Name < pkColumns[j].Name
+	})
+
+	var pkValues []any
+	for _, pkColumn := range pkColumns {
+		pkValues = append(pkValues, values[pkColumn.Name])
+	}
+
+	return pkValues, nil
+}
+
+func (s *Server) upsertHistoryMode(db *surrealdb.DB, thing models.RecordID, vars map[string]interface{}) error {
+	if _, found := vars["id"]; found {
+		return fmt.Errorf("id is not allowed to be set in the vars")
+	}
+
+	res, err := surrealdb.Upsert[any](db, thing, vars)
+	if err != nil {
+		return fmt.Errorf("unable to upsert record %s: %w", thing, err)
+	}
+
+	if s.debugging() {
+		s.logDebug("Added history record", "thing", thing, "vars", vars, "result", *res)
+	}
+
+	return nil
+}
+
+func (s *Server) upsertMerge(db *surrealdb.DB, thing models.RecordID, vars map[string]interface{}) (*[]surrealdb.QueryResult[any], error) {
+	var content string
+	for k := range vars {
+		content += fmt.Sprintf("%s: $%s, ", k, k)
+	}
+	content = strings.TrimSuffix(content, ", ")
+
+	varsWithTB := map[string]interface{}{
+		"tb": thing.Table,
+		"id": thing,
+	}
+	for k, v := range vars {
+		varsWithTB[k] = v
+	}
+
+	res, err := surrealdb.Query[any](db, `UPSERT type::thing($tb, $id) MERGE {`+content+`};`, varsWithTB)
+	if err != nil {
+		return nil, fmt.Errorf("unable to upsert merge record %s: %w", thing, err)
+	}
+
+	return res, nil
+}
+
+func (s *Server) getPreviousValues(db *surrealdb.DB, fields []string, table *pb.Table, pkColumns []string, pkValues []any) (map[string]interface{}, error) {
+	// Get the previous values for the thing (where the SurrealDB table field that corresponds to the source table's primary key column matches, and its fivetran_active is true)
+	var conds []string
+
+	for _, col := range pkColumns {
+		conds = append(conds, fmt.Sprintf("%s = $%s", col, col))
+	}
+
+	byID := strings.Join(conds, " AND ")
+
+	vars := map[string]interface{}{
+		"tb":     table.Name,
+		"fields": fields,
+	}
+
+	for i, col := range pkColumns {
+		vars[col] = pkValues[i]
+	}
+
 	req, err := surrealdb.Query[[]map[string]interface{}](
 		db,
-		"SELECT $fields FROM $rc;",
-		map[string]interface{}{
-			"rc":     thing,
-			"fields": fields,
-		},
+		fmt.Sprintf(
+			"SELECT type::fields($fields) FROM type::table($tb) WHERE %s AND fivetran_active = true;",
+			byID,
+		),
+		vars,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("unable to get previous values for record %s: %w", thing, err)
+		return nil, fmt.Errorf("unable to get previous values for %s where %s: %w", table.Name, byID, err)
+	}
+
+	if len(*req) == 0 {
+		return nil, fmt.Errorf("got empty query response while getting previous values found for %s where %s", table.Name, byID)
+	}
+
+	if len((*req)[0].Result) == 0 {
+		// We assume the record has not been created yet.
+		// The caller should omit the unmodified fields from the vars,
+		// so that SurrealDB will create the record without those fields noted unmodified.
+		return nil, nil
 	}
 
 	return (*req)[0].Result[0], nil
