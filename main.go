@@ -38,6 +38,7 @@ func main() {
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to listen")
+		os.Exit(1)
 	}
 
 	// Create a new gRPC server with increased message size limits
