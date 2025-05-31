@@ -53,13 +53,15 @@ func (sv *SurrealValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			}
 		}
 
+		// "Uses BigDecimal for storing any real number with arbitrary precision."
 		// Check for DecimalString type
 		if decimal, ok := m["decimal"].(string); ok {
 			sv.Value = models.DecimalString(decimal)
 			return nil
 		}
 
-		if tm, ok := m["time"].(string); ok {
+		// "An ISO 8601 compliant data type that stores a date with time and time zone."
+		if tm, ok := m["datetime"].(string); ok {
 			t, err := time.Parse(time.RFC3339, tm)
 			if err != nil {
 				return fmt.Errorf("invalid time format: %s", tm)
@@ -67,6 +69,12 @@ func (sv *SurrealValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			// Use UTC time
 			t = t.UTC()
 			sv.Value = models.CustomDateTime{Time: t}
+			return nil
+		}
+
+		// "Store formatted objects containing values of any supported type with no limit to object depth or nesting."
+		if obj, ok := m["object"].(map[string]interface{}); ok {
+			sv.Value = obj
 			return nil
 		}
 
