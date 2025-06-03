@@ -1,7 +1,6 @@
 package connector
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -51,7 +50,7 @@ var typeMappings = []typeMapping{
 		sdb: "bytes",
 		ft:  pb.DataType_BINARY,
 		surrealType: func(v string) (interface{}, error) {
-			return base64.StdEncoding.DecodeString(v)
+			return []byte(v), nil
 		},
 	},
 	{
