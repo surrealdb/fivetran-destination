@@ -144,5 +144,11 @@ func (s *Server) defineFieldQueryFromFt(tb string, c *pb.Column) (string, error)
 		return "", fmt.Errorf("unsupported data type: %s (name=%v, type=%v, params=%v)", c.Type, c.Name, c.Type, c.Params)
 	}
 
-	return fmt.Sprintf(t, c.Name, tb, sdb), nil
+	defineField := fmt.Sprintf(t, c.Name, tb, sdb)
+
+	if c.Type == pb.DataType_JSON {
+		defineField += fmt.Sprintf("DEFINE FIELD %s.* ON %s TYPE any;", c.Name, tb)
+	}
+
+	return defineField, nil
 }

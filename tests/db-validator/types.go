@@ -75,7 +75,11 @@ func (sv *SurrealValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 		// "Store formatted objects containing values of any supported type with no limit to object depth or nesting."
 		if obj, ok := m["object"].(map[string]interface{}); ok {
-			sv.Value = obj
+			any2any := map[any]any{}
+			for k, v := range obj {
+				any2any[k] = v
+			}
+			sv.Value = any2any
 			return nil
 		}
 
