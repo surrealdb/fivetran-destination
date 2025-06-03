@@ -141,7 +141,7 @@ func (s *Server) defineFieldQueryFromFt(tb string, c *pb.Column) (string, error)
 	}
 
 	if sdb == "" {
-		return "", fmt.Errorf("unsupported data type: %s", c.Type)
+		return "", fmt.Errorf("unsupported data type: %s (name=%v, type=%v, params=%v)", c.Type, c.Name, c.Type, c.Params)
 	}
 
 	return fmt.Sprintf(t, c.Name, tb, sdb), nil
