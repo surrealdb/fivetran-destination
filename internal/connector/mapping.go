@@ -83,6 +83,20 @@ var typeMappings = []typeMapping{
 	},
 	{
 		sdb: "datetime",
+		ft:  pb.DataType_NAIVE_DATE,
+		surrealType: func(v string) (interface{}, error) {
+			return time.Parse(time.RFC3339, v)
+		},
+	},
+	{
+		sdb: "datetime",
+		ft:  pb.DataType_NAIVE_DATETIME,
+		surrealType: func(v string) (interface{}, error) {
+			return time.Parse(time.RFC3339, v)
+		},
+	},
+	{
+		sdb: "datetime",
 		ft:  pb.DataType_UTC_DATETIME,
 		surrealType: func(v string) (interface{}, error) {
 			return time.Parse(time.RFC3339, v)
@@ -97,6 +111,20 @@ var typeMappings = []typeMapping{
 				return nil, fmt.Errorf("surrealType(object): %w", err)
 			}
 			return m, nil
+		},
+	},
+	{
+		sdb: "string",
+		ft:  pb.DataType_XML,
+		surrealType: func(v string) (interface{}, error) {
+			return v, nil
+		},
+	},
+	{
+		sdb: "datetime",
+		ft:  pb.DataType_NAIVE_TIME,
+		surrealType: func(v string) (interface{}, error) {
+			return time.Parse(time.RFC3339, v)
 		},
 	},
 }
