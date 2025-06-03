@@ -69,12 +69,9 @@ fi
 start_connector() {
     if [ "$USE_DOCKER" = "true" ]; then
         echo "Starting connector via Docker..."
-        # Build the Docker image if it doesn't exist
-        if ! docker image inspect fivetran-surrealdb-connector:latest > /dev/null 2>&1; then
-            cd "$(pwd)/.."
-            docker build -t fivetran-surrealdb-connector .
-            cd tests
-        fi
+        cd "$(pwd)/.."
+        docker build -t fivetran-surrealdb-connector .
+        cd tests
         # Run the container with environment variables and network settings
         docker run -d --name connector-test \
             --mount type=bind,source="$(pwd)/destination-data",target="$(pwd)/destination-data" \
