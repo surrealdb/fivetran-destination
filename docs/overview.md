@@ -34,10 +34,10 @@ We use the following data type conversions:
 | LONG | int | |
 | FLOAT | float | |
 | DOUBLE | float | |
-| BIGDECIMAL | decimal | |
+| DECIMAL | decimal | |
 | LOCALDATE | datetime | |
-| INSTANT | datetime | |
 | LOCALDATETIME | datetime | |
+| INSTANT | datetime | |
 | STRING | string | |
 | JSON | object | |
 | BINARY | bytes | |
