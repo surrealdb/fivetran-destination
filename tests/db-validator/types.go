@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -75,6 +76,15 @@ func (sv *SurrealValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		// "Store formatted objects containing values of any supported type with no limit to object depth or nesting."
 		if obj, ok := m["object"].(map[string]interface{}); ok {
 			sv.Value = obj
+			return nil
+		}
+
+		if hexStr, ok := m["hex2bytes"].(string); ok {
+			bytes, err := hex.DecodeString(hexStr)
+			if err != nil {
+				return fmt.Errorf("invalid hex2bytes format: %s", hexStr)
+			}
+			sv.Value = bytes
 			return nil
 		}
 
