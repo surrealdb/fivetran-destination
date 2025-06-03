@@ -1,0 +1,39 @@
+tables:
+  transaction:
+    - _fivetran_id: txn1
+      _fivetran_synced:
+        recent-enough:
+          within: 30s
+      mybool: true
+      # All those three integers are stored as int64 in SurrealDB.
+      # SurrealDB has `int` for integer numbers, which is a 64-bit integer.
+      myshort:
+        uint64: 1
+      myint:
+        uint64: 1
+      mylong:
+        uint64: 1
+      # Both myfloat and mydouble are double precision floats because
+      # SurrealDB's `float` is a double precision float.
+      myfloat: 1.0
+      mydouble: 1.0
+      mydecimal:
+        decimal: "1"
+      mynaivedate:
+        datetime: "2021-01-01T00:00:00Z"
+      mynaivedatetime:
+        datetime: "2021-01-01T00:00:00Z"
+      myutcdatetime:
+        datetime: "2021-01-01T00:00:00Z"
+      mybinary:
+        hex2bytes: "616263"
+      myxml: "<root><child>value</child></root>"
+      mystring: "hello"
+      myjson:
+        object:
+          key: value
+      mynaivetime:
+        datetime: "2021-01-01T00:00:00Z"
+      id:
+        table: transaction
+        id: "txn1"

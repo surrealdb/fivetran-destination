@@ -1,0 +1,75 @@
+{
+   "create_table" : {
+      "transaction": {
+         "columns": {
+            "mybool": "BOOLEAN",
+            "myshort": "SHORT",
+            "myint": "INT",
+            "mylong": "LONG",
+            "myfloat": "FLOAT",
+            "mydouble": "DOUBLE",
+            "mydecimal": "DECIMAL",
+            "mynaivedate": "NAIVE_DATE",
+            "mynaivedatetime": "NAIVE_DATETIME",
+            "myutcdatetime": "UTC_DATETIME",
+            "mystring": "STRING",
+            "myxml": "XML",
+            "myjson": "JSON",
+            "mynaivetime": "NAIVE_TIME",
+            "mybinary": "BINARY"
+         },
+         "history_mode": false
+      }
+   },
+   "describe_table" : [
+      "transaction"
+   ],
+   "alter_table" : {
+      "transaction": {
+         "columns": {
+            "mybool": "BOOLEAN",
+            "myshort": "SHORT",
+            "myint": "INT",
+            "mylong": "LONG",
+            "myfloat": "FLOAT",
+            "mydouble": "DOUBLE",
+            "mydecimal": "DECIMAL",
+            "mynaivedate": "NAIVE_DATE",
+            "mynaivedatetime": "NAIVE_DATETIME",
+            "myutcdatetime": "UTC_DATETIME",
+            "mystring": "STRING",
+            "myxml": "XML",
+            "myjson": "JSON",
+            "mynaivetime": "NAIVE_TIME",
+            "mybinary": "BINARY"
+         },
+         "history_mode": false
+      }
+   },
+   "ops" : [
+      {
+         "upsert": {
+            "transaction": [
+               {
+                  "_fivetran_id":"txn1",
+                  "mybool": true,
+                  "myshort": 1,
+                  "myint": 1,
+                  "mylong": 1,
+                  "myfloat": 1.0,
+                  "mydouble": 1.0,
+                  "mydecimal": 1.0,
+                  "mynaivedate": "2021-01-01T00:00:00Z",
+                  "mynaivedatetime": "2021-01-01T00:00:00Z",
+                  "myutcdatetime": "2021-01-01T00:00:00Z",
+                  "mystring": "hello",
+                  "myxml": "<root><child>value</child></root>",
+                  "myjson": "{\"key\": \"value\"}",
+                  "mynaivetime": "2021-01-01T00:00:00Z",
+                  "mybinary": "abc"
+               }
+            ]
+         }
+      }
+   ]
+}
