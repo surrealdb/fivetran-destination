@@ -610,7 +610,7 @@ func (s *Server) batchReplace(db *surrealdb.DB, fields map[string]columnInfo, re
 		}
 
 		if s.debugging() {
-			s.logDebug("Replaced record", "values", values, "thing", thing, "vars", vars, "result", *res)
+			s.logDebug("Replaced record", "values", values, "thing", thing, "vars", fmt.Sprintf("%+v", vars), "result", fmt.Sprintf("%+v", *res))
 		}
 
 		return nil
