@@ -31,7 +31,7 @@ func (s *Server) defineTable(db *surrealdb.DB, table *pb.Table) error {
 
 	var historyMode bool
 
-	for _, c := range table.Columns {
+	for i, c := range table.Columns {
 		if c.Name == "id" {
 			if s.debugging() {
 				s.logDebug("Skipping id")
@@ -48,7 +48,7 @@ func (s *Server) defineTable(db *surrealdb.DB, table *pb.Table) error {
 		if err := validateColumnName(c.Name); err != nil {
 			return err
 		}
-		q, err := s.defineFieldQueryFromFt(tb, c)
+		q, err := s.defineFieldQueryFromFt(tb, c, i)
 		if err != nil {
 			return err
 		}

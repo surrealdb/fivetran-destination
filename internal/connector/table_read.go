@@ -1,7 +1,9 @@
 package connector
 
 import (
+	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
@@ -14,18 +16,32 @@ type tableInfo struct {
 
 type columnInfo struct {
 	Name       string
-	Type       string
+	SDBType    string
 	PrimaryKey bool
 	Optional   bool
+	ColumnMeta
 }
 
 func (c *columnInfo) strToSurrealType(v string) (interface{}, error) {
 	for _, t := range typeMappings {
-		if t.sdb == c.Type {
+		if t.ft == c.FtType {
 			return t.surrealType(v)
 		}
 	}
-	return nil, fmt.Errorf("unsupported data type for column %s: %s", c.Name, c.Type)
+	return nil, fmt.Errorf("unsupported data type for column %s: surrealdb type %s, fivetran type %s", c.Name, c.SDBType, c.FtType)
+}
+
+// ColumnMeta is the metadata for a field in a table.
+// It is used to store information like the Fivetran column index and type,
+// that can not be represented directly in the SurrealDB schema.
+type ColumnMeta struct {
+	// The column index in the Fivetran schema.
+	// This is used to map the SurrealDB field to the correct index in the Fivetran schema.
+	FtIndex int `json:"ft_index"`
+	// The data type of the column in the Fivetran schema.
+	// This is used to map the SurrealDB field to the correct data type in the Fivetran schema,
+	// even in case the type cannot be directly represented in the SurrealDB schema.
+	FtType pb.DataType `json:"ft_data_type"`
 }
 
 var ErrTableNotFound = fmt.Errorf("table not found")
@@ -88,12 +104,31 @@ func (s *Server) infoForTable(schemaName string, tableName string, configuration
 	for _, field := range fields {
 		field = strings.TrimPrefix(field, "DEFINE FIELD ")
 		s := strings.Split(field, " ")
-		l := s[0]
+		name := s[0]
 		rr := strings.Split(field, " TYPE ")
-		r := strings.Split(rr[1], " ")[0]
+		tpe := strings.Split(rr[1], " ")[0]
 
-		name := l
-		tpe := r
+		var meta ColumnMeta
+		if strings.Contains(field, "COMMENT '") {
+			comment := strings.Split(field, "COMMENT '")[1]
+			comment = strings.Split(comment, "'")[0]
+			err := json.Unmarshal([]byte(comment), &meta)
+			if err != nil {
+				return tableInfo{}, fmt.Errorf("failed to unmarshal comment %s for field %s: %v", comment, name, err)
+			}
+		}
+
+		// `DEFINE FIELD upper.* ON table TYPE any;`
+		// ends up with a field name like `upper[*]`
+		// upper[*] are for any nested fields in the `upper` object field
+		// and does not need to be mapped to a Fivetran column.
+		// What's why we skip them here.
+		if strings.HasSuffix(name, "[*]") {
+			if tpe != "any" {
+				return tableInfo{}, fmt.Errorf("unexpected type for field %s: %s", name, tpe)
+			}
+			continue
+		}
 
 		var optional bool
 		if strings.HasPrefix(tpe, "option<") {
@@ -103,9 +138,10 @@ func (s *Server) infoForTable(schemaName string, tableName string, configuration
 		}
 
 		columns = append(columns, columnInfo{
-			Name:     name,
-			Type:     tpe,
-			Optional: optional,
+			Name:       name,
+			SDBType:    tpe,
+			Optional:   optional,
+			ColumnMeta: meta,
 		})
 	}
 
@@ -119,6 +155,10 @@ func (s *Server) infoForTable(schemaName string, tableName string, configuration
 		s.logDebug("Ran info for table", "table", tableName, "columns", columns)
 	}
 
+	sort.Slice(columns, func(i, j int) bool {
+		return columns[i].FtIndex < columns[j].FtIndex
+	})
+
 	return tableInfo{
 		columns: columns,
 	}, nil
@@ -128,26 +168,9 @@ func (s *Server) columnsFromSurrealToFivetran(sColumns []columnInfo) ([]*pb.Colu
 	var ftColumns []*pb.Column
 
 	for _, c := range sColumns {
-		var pbDataType pb.DataType
-		switch c.Type {
-		case "string":
-			pbDataType = pb.DataType_STRING
-		case "int":
-			pbDataType = pb.DataType_INT
-		case "float":
-			pbDataType = pb.DataType_DOUBLE
-		case "bool":
-			pbDataType = pb.DataType_BOOLEAN
-		case "datetime":
-			pbDataType = pb.DataType_UTC_DATETIME
-		case "object":
-			pbDataType = pb.DataType_JSON
-		default:
-			return nil, fmt.Errorf("columnsFromSurrealToFivetran: unsupported data type: %s", c.Type)
-		}
 		ftColumns = append(ftColumns, &pb.Column{
 			Name: c.Name,
-			Type: pbDataType,
+			Type: c.FtType,
 		})
 	}
 
