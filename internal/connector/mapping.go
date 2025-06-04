@@ -129,8 +129,8 @@ var typeMappings = []typeMapping{
 	},
 }
 
-func (s *Server) defineFieldQueryFromFt(tb string, c *pb.Column) (string, error) {
-	t := `DEFINE FIELD %s on %s TYPE option<%s>;`
+func (s *Server) defineFieldQueryFromFt(tb string, c *pb.Column, columnIndex int) (string, error) {
+	t := `DEFINE FIELD %s on %s TYPE option<%s> COMMENT '%s';`
 
 	var sdb string
 	for _, m := range typeMappings {
@@ -144,7 +144,16 @@ func (s *Server) defineFieldQueryFromFt(tb string, c *pb.Column) (string, error)
 		return "", fmt.Errorf("unsupported data type: %s (name=%v, type=%v, params=%v)", c.Type, c.Name, c.Type, c.Params)
 	}
 
-	defineField := fmt.Sprintf(t, c.Name, tb, sdb)
+	meta := ColumnMeta{
+		FtIndex: columnIndex,
+		FtType:  c.Type,
+	}
+	metaJSON, err := json.Marshal(meta)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal column meta: %w", err)
+	}
+
+	defineField := fmt.Sprintf(t, c.Name, tb, sdb, string(metaJSON))
 
 	if c.Type == pb.DataType_JSON {
 		defineField += fmt.Sprintf("DEFINE FIELD %s.* ON %s TYPE any;", c.Name, tb)
