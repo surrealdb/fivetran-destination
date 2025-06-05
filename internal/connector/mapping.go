@@ -130,7 +130,7 @@ var typeMappings = []typeMapping{
 }
 
 func (s *Server) defineFieldQueryFromFt(tb string, c *pb.Column, columnIndex int) (string, error) {
-	t := `DEFINE FIELD %s on %s TYPE option<%s> COMMENT '%s';`
+	t := `DEFINE FIELD OVERWRITE %s on %s TYPE option<%s> COMMENT '%s';`
 
 	var sdb string
 	for _, m := range typeMappings {
