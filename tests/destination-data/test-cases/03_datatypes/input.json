@@ -59,7 +59,7 @@
                   "myfloat": 1.0,
                   "mydouble": 1.0,
                   "mydecimal": 1.0,
-                  "mynaivedate": "2021-01-01T00:00:00Z",
+                  "mynaivedate": "2021-01-02",
                   "mynaivedatetime": "2021-01-01T00:00:00Z",
                   "myutcdatetime": "2021-01-01T00:00:00Z",
                   "mystring": "hello",

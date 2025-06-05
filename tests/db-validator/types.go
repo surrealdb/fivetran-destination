@@ -61,6 +61,15 @@ func (sv *SurrealValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			return nil
 		}
 
+		if d, ok := m["date"].(string); ok {
+			t, err := time.Parse(time.DateOnly, d)
+			if err != nil {
+				return fmt.Errorf("invalid date format: %s", d)
+			}
+			sv.Value = models.CustomDateTime{Time: t}
+			return nil
+		}
+
 		// "An ISO 8601 compliant data type that stores a date with time and time zone."
 		if tm, ok := m["datetime"].(string); ok {
 			t, err := time.Parse(time.RFC3339, tm)

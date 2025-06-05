@@ -85,7 +85,7 @@ var typeMappings = []typeMapping{
 		sdb: "datetime",
 		ft:  pb.DataType_NAIVE_DATE,
 		surrealType: func(v string) (interface{}, error) {
-			return time.Parse(time.RFC3339, v)
+			return time.Parse(time.DateOnly, v)
 		},
 	},
 	{
