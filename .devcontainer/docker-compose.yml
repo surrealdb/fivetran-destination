@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  devcontainer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ..:/workspace:cached
+    command: sleep infinity
+    network_mode: service:surrealdb
+    environment:
+      # This can be "localhost" instead of "surrealdb" because
+      # we are in the `service` network mode.
+      - SURREALDB_HOST=localhost
+      - SURREALDB_PORT=8001
+
+  surrealdb:
+    image: surrealdb/surrealdb:latest
+    command: start --user root --pass root --bind 127.0.0.1:8001
+    ports:
+      # This cannot be "8001:8000" combined with "--bind localhost:8000" because this container is bound
+      # to the devcontainer using service network mode.
+      # In service network mode, the "host" of this "hostport:localport" expression
+      # does not refer to the devcontainer, but the host machine as similar to
+      # other network modes.
+      - "8001:8001"
+    volumes:
+      - surrealdb-data:/data
+    environment:
+      - SURREAL_LOG=trace
+
+volumes:
+  surrealdb-data:
