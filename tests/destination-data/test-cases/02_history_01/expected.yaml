@@ -2,9 +2,9 @@ tables:
   transaction:
     - _fivetran_active: false
       _fivetran_end:
-        time: "2005-05-24T20:57:59Z"
+        datetime: "2005-05-24T20:57:59Z"
       _fivetran_start:
-        time: "2005-05-23T20:57:00Z"
+        datetime: "2005-05-23T20:57:00Z"
       _fivetran_synced:
         recent-enough:
           within: 30s
@@ -16,9 +16,9 @@ tables:
       amount: 100.0
     - _fivetran_active: true
       _fivetran_end:
-        time: "9999-12-31T23:59:59Z"
+        datetime: "9999-12-31T23:59:59Z"
       _fivetran_start:
-        time: "2005-05-24T20:58:00Z"
+        datetime: "2005-05-24T20:58:00Z"
       _fivetran_synced:
         recent-enough:
           within: 30s
@@ -30,9 +30,9 @@ tables:
       amount: 101.0
     - _fivetran_active: false
       _fivetran_end:
-        time: "2005-05-24T20:57:59Z"
+        datetime: "2005-05-24T20:57:59Z"
       _fivetran_start:
-        time: "2005-05-23T20:57:00Z"
+        datetime: "2005-05-23T20:57:00Z"
       _fivetran_synced:
         recent-enough:
           within: 30s
@@ -44,9 +44,9 @@ tables:
       amount: 200.0
     - _fivetran_active: true
       _fivetran_end:
-        time: "9999-12-31T23:59:59Z"
+        datetime: "9999-12-31T23:59:59Z"
       _fivetran_start:
-        time: "2005-05-24T20:58:00Z"
+        datetime: "2005-05-24T20:58:00Z"
       _fivetran_synced:
         recent-enough:
           within: 30s
@@ -58,9 +58,9 @@ tables:
       amount: 201.0
     - _fivetran_active: false
       _fivetran_end:
-        time: "2005-05-24T20:58:59Z"
+        datetime: "2005-05-24T20:58:59Z"
       _fivetran_start:
-        time: "2005-05-23T20:57:00Z"
+        datetime: "2005-05-23T20:57:00Z"
       _fivetran_synced:
         recent-enough:
           within: 30s
@@ -72,9 +72,9 @@ tables:
       amount: 300.0
     - _fivetran_active: true
       _fivetran_end:
-        time: "9999-12-31T23:59:59Z"
+        datetime: "9999-12-31T23:59:59Z"
       _fivetran_start:
-        time: "2005-05-24T20:59:00Z"
+        datetime: "2005-05-24T20:59:00Z"
       _fivetran_synced:
         recent-enough:
           within: 30s
@@ -86,9 +86,9 @@ tables:
       amount: 301.0
     - _fivetran_active: true
       _fivetran_end:
-        time: "9999-12-31T23:59:59Z"
+        datetime: "9999-12-31T23:59:59Z"
       _fivetran_start:
-        time: "2005-05-23T20:57:00Z"
+        datetime: "2005-05-23T20:57:00Z"
       _fivetran_synced:
         recent-enough:
           within: 30s
