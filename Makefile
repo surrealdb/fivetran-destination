@@ -1,4 +1,4 @@
-.PHONY: all build test clean generate download-protos test-destination lint
+.PHONY: all build test clean generate download-protos test-destination lint fmt
 
 # Allow injection of additional go test arguments
 # Examples:
@@ -35,6 +35,11 @@ test-destination:
 lint:
 	@echo "Running golangci-lint..."
 	@docker run --rm -v $(PWD):/app -w /app golangci/golangci-lint:v2.1.1 golangci-lint run --timeout=5m
+
+fmt:
+	@echo "Formatting Go code..."
+	@go fmt ./...
+	@echo "Go code formatted successfully"
 
 clean:
 	rm -rf bin/
