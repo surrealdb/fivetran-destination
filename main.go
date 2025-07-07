@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -60,6 +61,10 @@ func main() {
 		grpc.MaxSendMsgSize(1024*1024*50), // 50MB
 	)
 	srv := connector.NewServer(logger)
+
+	// Start server components (metrics collector, etc.)
+	ctx := context.Background()
+	srv.Start(ctx)
 
 	pb.RegisterDestinationConnectorServer(s, srv)
 
