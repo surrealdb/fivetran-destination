@@ -25,11 +25,22 @@ func LoggerFromEnv() (zerolog.Logger, error) {
 }
 
 func NewServer(logger zerolog.Logger) *Server {
+	logging := &Logging{
+		logger: logger,
+	}
+
+	// Get metrics interval from environment variable
+	metricsInterval := 30 * time.Second
+	if interval := os.Getenv("METRICS_LOG_INTERVAL"); interval != "" {
+		if d, err := time.ParseDuration(interval); err == nil {
+			metricsInterval = d
+		}
+	}
+
 	return &Server{
-		mu: &sync.Mutex{},
-		Logging: &Logging{
-			logger: logger,
-		},
+		mu:      &sync.Mutex{},
+		Logging: logging,
+		metrics: NewMetricsCollector(logging, metricsInterval),
 	}
 }
 
@@ -39,6 +50,16 @@ type Server struct {
 	mu *sync.Mutex
 
 	*Logging
+	metrics *MetricsCollector
+}
+
+// Start initializes and starts the server components
+func (s *Server) Start(ctx context.Context) {
+	// Start metrics collection
+	if s.metrics != nil {
+		s.metrics.Start(ctx)
+		s.logInfo("Metrics collection started", "interval", s.metrics.logInterval)
+	}
 }
 
 // ConfigurationForm implements the ConfigurationForm method required by the DestinationConnectorServer interface
@@ -606,7 +627,15 @@ func (s *Server) batchReplace(db *surrealdb.DB, fields map[string]columnInfo, re
 
 		res, err := surrealdb.Upsert[any](db, thing, vars)
 		if err != nil {
+			if s.metrics != nil {
+				s.metrics.DBWriteError()
+			}
 			return fmt.Errorf("unable to upsert record %s: %w", thing, err)
+		}
+
+		// Track successful DB write
+		if s.metrics != nil {
+			s.metrics.DBWriteCompleted(1)
 		}
 
 		if s.debugging() {
@@ -688,14 +717,25 @@ func (s *Server) batchUpdate(db *surrealdb.DB, fields map[string]columnInfo, req
 			var r any
 			r, err = s.upsertMerge(db, thing, vars)
 			if err != nil {
+				if s.metrics != nil {
+					s.metrics.DBWriteError()
+				}
 				return err
 			}
 			res = &r
 		} else {
 			res, err = surrealdb.Update[any](db, thing, vars)
 			if err != nil {
+				if s.metrics != nil {
+					s.metrics.DBWriteError()
+				}
 				return err
 			}
+		}
+
+		// Track successful DB write
+		if s.metrics != nil {
+			s.metrics.DBWriteCompleted(1)
 		}
 
 		if s.debugging() {
@@ -728,7 +768,15 @@ func (s *Server) batchDelete(db *surrealdb.DB, fields map[string]columnInfo, req
 
 		err := db.Send(&res, "delete", thing)
 		if err != nil {
+			if s.metrics != nil {
+				s.metrics.DBWriteError()
+			}
 			return fmt.Errorf("unable to delete record %s: %w", thing, err)
+		}
+
+		// Track successful DB write (delete)
+		if s.metrics != nil {
+			s.metrics.DBWriteCompleted(1)
 		}
 
 		if s.debugging() {
