@@ -1,5 +1,13 @@
 .PHONY: all build test clean generate download-protos test-destination lint
 
+# Allow injection of additional go test arguments
+# Examples:
+# - GOTEST_ARGS="-memprofile=profiles/test_mem.prof" ./internal/connector)
+# - GOTEST_ARGS="-run TestMemory ./..."
+# - GOTEST_ARGS="-race ./..."
+# - GOTEST_ARGS="-bench=BenchmarkMemoryAllocation -benchmem ./internal/connector"
+GOTEST_ARGS ?= ./...
+
 all: generate build test test-destination lint
 
 download-protos:
@@ -18,7 +26,7 @@ build:
 	go build -o bin/connector
 
 test:
-	go test ./...
+	go test $(GOTEST_ARGS)
 
 test-destination:
 	@echo "Running destination connector conformance tests..."
