@@ -31,4 +31,4 @@ lint:
 clean:
 	rm -rf bin/
 	rm -rf proto/
-	rm -rf internal/pb/ 
+	rm -rf internal/pb/
