@@ -49,7 +49,7 @@ jobs:
         run: |
           # Create logs directory
           mkdir -p logs
-          
+
           # Run the test script
           USE_DOCKER=true ./tests/destination-connector-test.sh
         env:
