@@ -323,7 +323,7 @@ run_test_case() {
     docker run --mount type=bind,source="$(pwd)/destination-data",target=/data \
       -a STDIN -a STDOUT -a STDERR $DOCKER_TTY_FLAG \
       $DOCKER_LINK_ARG \
-      -e WORKING_DIR="$(pwd)/destination-data" \
+      -e WORKING_DIR="/data" \
       -e GRPC_HOSTNAME=$GRPC_HOSTNAME \
       us-docker.pkg.dev/build-286712/public-docker-us/sdktesters-v2/sdk-tester:$SDK_TESTER_TAG \
       --tester-type destination --port 50052 --input-file "input_${case_name}.json" \
