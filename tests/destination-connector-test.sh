@@ -158,6 +158,13 @@ else
 EOF
 fi
 
+CONNECTOR_WORKING_DIR=""
+if [ "$USE_DOCKER" = "true" ]; then
+    CONNECTOR_WORKING_DIR="/data"
+else
+    CONNECTOR_WORKING_DIR="$(pwd)/destination-data"
+fi
+
 # Function to start the connector
 start_connector() {
     local case_name="$1"
@@ -176,7 +183,7 @@ start_connector() {
         
         # Run the container with environment variables and network settings
         docker run -d --name connector-test \
-            --mount type=bind,source="$(pwd)/destination-data",target="/workspace/tests/destination-data" \
+            --mount type=bind,source="$(pwd)/destination-data",target="${CONNECTOR_WORKING_DIR}" \
             --link surrealdb-test:surrealdb-test \
             -e SURREAL_FIVETRAN_DEBUG="${SURREAL_FIVETRAN_DEBUG:-}" \
             -e SURREALDB_ENDPOINT="${SURREALDB_ENDPOINT:-}" \
@@ -320,10 +327,10 @@ run_test_case() {
         DOCKER_TTY_FLAG="-it"
     fi
 
-    docker run --mount type=bind,source="$(pwd)/destination-data",target=/data \
+    docker run --mount type=bind,source="$(pwd)/destination-data",target="/data" \
       -a STDIN -a STDOUT -a STDERR $DOCKER_TTY_FLAG \
       $DOCKER_LINK_ARG \
-      -e WORKING_DIR="/data" \
+      -e WORKING_DIR="${CONNECTOR_WORKING_DIR}" \
       -e GRPC_HOSTNAME=$GRPC_HOSTNAME \
       us-docker.pkg.dev/build-286712/public-docker-us/sdktesters-v2/sdk-tester:$SDK_TESTER_TAG \
       --tester-type destination --port 50052 --input-file "input_${case_name}.json" \
