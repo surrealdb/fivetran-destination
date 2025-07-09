@@ -141,9 +141,15 @@ else
 
     # Generate configuration.json for local instance
     echo "Generating configuration.json for local instance..."
+    # Use container name if running connector in Docker
+    if [ "$USE_DOCKER" = "true" ]; then
+        SURREALDB_HOST="surrealdb-test"
+    else
+        SURREALDB_HOST="localhost"
+    fi
     cat > "$(pwd)/destination-data/configuration.json" << EOF
 {
-  "url": "ws://localhost:8000/rpc",
+  "url": "ws://${SURREALDB_HOST}:8000/rpc",
   "ns": "${SURREALDB_NAMESPACE:-testns}",
   "db": "${SURREALDB_DATABASE:-tester}",
   "user": "root",
@@ -170,8 +176,8 @@ start_connector() {
         
         # Run the container with environment variables and network settings
         docker run -d --name connector-test \
-            --mount type=bind,source="$(pwd)/destination-data",target="$(pwd)/destination-data" \
-            --network host \
+            --mount type=bind,source="$(pwd)/destination-data",target="/workspace/tests/destination-data" \
+            --link surrealdb-test:surrealdb-test \
             -e SURREAL_FIVETRAN_DEBUG="${SURREAL_FIVETRAN_DEBUG:-}" \
             -e SURREALDB_ENDPOINT="${SURREALDB_ENDPOINT:-}" \
             -e SURREALDB_TOKEN="${SURREALDB_TOKEN:-}" \
@@ -277,9 +283,9 @@ run_test_case() {
 
     # Determine the correct hostname for gRPC connection
     if [ "$USE_DOCKER" = "true" ]; then
-        # Connector is in Docker, use localhost with --network=host
-        GRPC_HOSTNAME="localhost"
-        echo "Connector running in Docker, using localhost"
+        # Both connector and tester are in Docker, use container name
+        GRPC_HOSTNAME="connector-test"
+        echo "Connector running in Docker, using container name: connector-test"
     else
         # Connector is running directly in the devcontainer
         # For DIND, containers can reach the host via the Docker bridge gateway
@@ -302,8 +308,15 @@ run_test_case() {
     # Run the SDK tester container and capture its output
     # When USE_DOCKER=false (default), the connector runs in devcontainer and
     # the tester needs to connect via Docker bridge gateway
+    # When USE_DOCKER=true, link to the connector container
+    DOCKER_LINK_ARG=""
+    if [ "$USE_DOCKER" = "true" ]; then
+        DOCKER_LINK_ARG="--link connector-test:connector-test"
+    fi
+
     docker run --mount type=bind,source="$(pwd)/destination-data",target=/data \
       -a STDIN -a STDOUT -a STDERR -it \
+      $DOCKER_LINK_ARG \
       -e WORKING_DIR="$(pwd)/destination-data" \
       -e GRPC_HOSTNAME=$GRPC_HOSTNAME \
       us-docker.pkg.dev/build-286712/public-docker-us/sdktesters-v2/sdk-tester:$SDK_TESTER_TAG \
