@@ -314,8 +314,14 @@ run_test_case() {
         DOCKER_LINK_ARG="--link connector-test:connector-test"
     fi
 
+    # Check if we're running in an interactive terminal
+    DOCKER_TTY_FLAG=""
+    if [ -t 0 ] && [ -t 1 ]; then
+        DOCKER_TTY_FLAG="-it"
+    fi
+
     docker run --mount type=bind,source="$(pwd)/destination-data",target=/data \
-      -a STDIN -a STDOUT -a STDERR -it \
+      -a STDIN -a STDOUT -a STDERR $DOCKER_TTY_FLAG \
       $DOCKER_LINK_ARG \
       -e WORKING_DIR="$(pwd)/destination-data" \
       -e GRPC_HOSTNAME=$GRPC_HOSTNAME \
