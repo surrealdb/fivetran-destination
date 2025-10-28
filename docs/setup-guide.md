@@ -35,11 +35,25 @@ To connect SurrealDB to Fivetran, you need the following:
     - For [Fivetran SaaS Deployment](/docs/deployment-models/saas-deployment), ensure your SurrealDB is accessible via Internet.
     - For [Fivetran Hybrid Deployment](/docs/deployment-models/hybrid-deployment), ensure your SurrealDB is accessible by the Fivetran Hybrid Deployment Agent.
     - For [Fivetran Self-Hosted Deployment](/docs/deployment-models/self-hosted-deployment), ensure your SurrealDB is accessible by the Fivetran HVR Agent.
-2. Set up the token and use it following [SurrealDB's Authentication documentation](https://surrealdb.com/docs/surrealdb/security/authentication#token).
+2. Run the `surreal sql --endpoint wss://YOUR_INSTANCE_HOSTNAME --ns your_ns --db your_db` command, and set up your own `ACCESS` or `USER`. The example below works for testing purposes:
+    ```
+    USE NS your_ns;
+    USE DB your_db;
+    DEFINE USER your_user ON NAMESPACE PASSWORD "YourPassword" ROLES OWNER;
+    ```
+   The user needs to be defined in the namespace, not in the database.
+   This is because the Fivetran connection test has no "schema," which corresponds to a database in SurrealDB.
+   Once Fivetran's connection test passes, the subsequent authentication against SurrealDB is done at the database level.
+   > Alternatively, you can set up the user or the token as described in [SurrealDB's Authentication documentation](https://surrealdb.com/docs/surrealdb/security/authentication#token). If you prefer using `token`, we recommend `DEFINE ACCESS ... TYPE JWT`. Refer to the [`DEFINE ACCESS > JWT` documentation](https://surrealdb.com/docs/surrealql/statements/define/access/jwt) to set up JWT access.
+4. Ensure the user/pass is working by running:
+    ```
+    surreal sql --endpoint wss://YOUR_INSTANCE_HOSTNAME --user your_user --pass YourPassword --ns your_ns --db your_db
+    ```
+5. Make a note of the `endpoint`, `user`, and `pass` parameters. You will need them to configure Fivetran.
 
 ### Option 2: Surreal Cloud
 
-1. Ensure your SurrealDB instance is up and running and accessible via Internet.
+1. Ensure your SurrealDB instance is up and running and accessible via the Internet.
 2. Browse the [Instances page](https://surrealist.app/cloud/instances) and select your chosen instance.
 3. Click **Connect with Surreal CLI** and locate the `surreal sql --endpoint wss://YOUR_INSTANCE_HOSTNAME --token YOUR_TOKEN` command.
 4. Run the command, and set up your own `ACCESS` or `USER`. The example below works for testing purposes:
@@ -48,20 +62,16 @@ To connect SurrealDB to Fivetran, you need the following:
     USE DB your_db;
     DEFINE USER your_user ON NAMESPACE PASSWORD "YourPassword" ROLES OWNER;
     ```
-   Just so you know, the user needs to be defined in the namespace, not in the database.
+   The user needs to be defined in the namespace, not in the database.
    This is because the Fivetran connection test has no "schema," which corresponds to a database in SurrealDB.
    Once Fivetran's connection test passes, the subsequent authentication against SurrealDB is done at the database level.
+   > Alternatively, you can set up the user or the token as described in [SurrealDB's Authentication documentation](https://surrealdb.com/docs/surrealdb/security/authentication#token). If you prefer using `token`, we recommend `DEFINE ACCESS ... TYPE JWT`. Refer to the [`DEFINE ACCESS > JWT` documentation](https://surrealdb.com/docs/surrealql/statements/define/access/jwt) to set up JWT access.
 6. Ensure the user/pass is working by running:
     ```
     surreal sql --endpoint wss://YOUR_INSTANCE_HOSTNAME --user your_user --pass YourPassword --ns your_ns --db your_db
     ```
 7. Make a note of the `endpoint`, `user`, and `pass` parameters. You will need them to configure Fivetran.
 
-8. (Optional) If you prefer using `token`, we recommend `DEFINE ACCESS ... TYPE JWT`. Refer to the [`DEFINE ACCESS > JWT` documentation](https://surrealdb.com/docs/surrealql/statements/define/access/jwt) to set up JWT access.
-    - Verify if the token is working before proceeding to the next section, by running:
-    ```
-    surreal sql --endpoint wss://YOUR_INSTANCE_HOSTNAME --token your_token --ns your_ns --db your_db
-    ```
 
 
 ### <span class="step-item"> Finish Fivetran configuration </span>
