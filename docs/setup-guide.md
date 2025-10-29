@@ -47,7 +47,7 @@ To connect SurrealDB to Fivetran, you need the following:
    > Alternatively, you can set up the user or the token as described in [SurrealDB's Authentication documentation](https://surrealdb.com/docs/surrealdb/security/authentication#token). If you prefer using `token`, we recommend `DEFINE ACCESS ... TYPE JWT`. Refer to the [`DEFINE ACCESS > JWT` documentation](https://surrealdb.com/docs/surrealql/statements/define/access/jwt) to set up JWT access.
 4. Ensure the user/pass is working by running:
     ```
-    surreal sql --endpoint wss://YOUR_INSTANCE_HOSTNAME --user your_user --pass YourPassword --ns your_ns --db your_db
+    surreal sql --endpoint wss://YOUR_INSTANCE_HOSTNAME --user your_user --pass YourPassword --ns your_ns --db your_db --auth-level namespace
     ```
 5. Make a note of the `endpoint`, `user`, and `pass` parameters. You will need them to configure Fivetran.
 
@@ -68,7 +68,7 @@ To connect SurrealDB to Fivetran, you need the following:
    > Alternatively, you can set up the user or the token as described in [SurrealDB's Authentication documentation](https://surrealdb.com/docs/surrealdb/security/authentication#token). If you prefer using `token`, we recommend `DEFINE ACCESS ... TYPE JWT`. Refer to the [`DEFINE ACCESS > JWT` documentation](https://surrealdb.com/docs/surrealql/statements/define/access/jwt) to set up JWT access.
 6. Ensure the user/pass is working by running:
     ```
-    surreal sql --endpoint wss://YOUR_INSTANCE_HOSTNAME --user your_user --pass YourPassword --ns your_ns --db your_db
+    surreal sql --endpoint wss://YOUR_INSTANCE_HOSTNAME --user your_user --pass YourPassword --ns your_ns --db your_db --auth-level namespace
     ```
 7. Make a note of the `endpoint`, `user`, and `pass` parameters. You will need them to configure Fivetran.
 
