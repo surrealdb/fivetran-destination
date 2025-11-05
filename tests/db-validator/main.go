@@ -35,12 +35,12 @@ func NewDBValidator() (*DBValidator, error) {
 		endpoint = "ws://localhost:8000/rpc"
 	}
 
-	db, err := surrealdb.New(endpoint)
+	ctx := context.Background()
+
+	db, err := surrealdb.FromEndpointURLString(ctx, endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to SurrealDB: %v", err)
 	}
-
-	ctx := context.Background()
 
 	if err := db.Use(ctx, namespace, database); err != nil {
 		return nil, fmt.Errorf("failed to use namespace and database: %v", err)

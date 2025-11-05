@@ -17,7 +17,7 @@ func TestDescribeTable_all_data_types(t *testing.T) {
 		t.Skip("SURREALDB_ENDPOINT is not set")
 	}
 
-	sdb, err := surrealdb.New(surrealdbEndpoint)
+	sdb, err := surrealdb.FromEndpointURLString(t.Context(), surrealdbEndpoint)
 	if err != nil {
 		t.Fatalf("failed to connect to surrealdb: %v", err)
 	}

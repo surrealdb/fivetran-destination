@@ -10,7 +10,7 @@ import (
 // connect connects to SurrealDB and returns a DB instance
 // The caller is responsible for "Use"ing ns/db after calling this function
 func (s *Server) connect(ctx context.Context, cfg config, schema string) (*surrealdb.DB, error) {
-	db, err := surrealdb.New(cfg.url)
+	db, err := surrealdb.FromEndpointURLString(ctx, cfg.url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to SurrealDB: %w", err)
 	}
