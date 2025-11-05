@@ -22,20 +22,20 @@ func TestDescribeTable_all_data_types(t *testing.T) {
 		t.Fatalf("failed to connect to surrealdb: %v", err)
 	}
 
-	_, err = sdb.SignIn(&surrealdb.Auth{
+	_, err = sdb.SignIn(t.Context(), &surrealdb.Auth{
 		Username: "root",
 		Password: "root",
 	})
 	require.NoError(t, err)
 
-	err = sdb.Use("test", "test")
+	err = sdb.Use(t.Context(), "test", "test")
 	require.NoError(t, err)
 
-	_, err = surrealdb.Query[any](sdb, "REMOVE TABLE IF EXISTS txn1;", nil)
+	_, err = surrealdb.Query[any](t.Context(), sdb, "REMOVE TABLE IF EXISTS txn1;", nil)
 	require.NoError(t, err)
 
 	srv := NewServer(zerolog.New(os.Stdout).Level(zerolog.DebugLevel))
-	created, err := srv.CreateTable(context.Background(), &pb.CreateTableRequest{
+	created, err := srv.CreateTable(t.Context(), &pb.CreateTableRequest{
 		Configuration: map[string]string{
 			"url":  surrealdbEndpoint,
 			"ns":   "test",
