@@ -1,15 +1,13 @@
 module github.com/surrealdb/fivetran-destination
 
-go 1.22.0
-
-toolchain go1.24.1
+go 1.25.3
 
 require (
 	github.com/google/go-cmp v0.6.0
 	github.com/klauspost/compress v1.18.0
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.10.0
-	github.com/surrealdb/surrealdb.go v0.3.2
+	github.com/surrealdb/surrealdb.go v1.0.0
 	google.golang.org/grpc v1.71.0
 	google.golang.org/protobuf v1.36.4
 	gopkg.in/yaml.v3 v3.0.1

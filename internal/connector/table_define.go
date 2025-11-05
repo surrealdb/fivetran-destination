@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -9,7 +10,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 )
 
-func (s *Server) defineTable(db *surrealdb.DB, table *pb.Table) error {
+func (s *Server) defineTable(ctx context.Context, db *surrealdb.DB, table *pb.Table) error {
 	type TableData struct {
 		Table string `json:"table"`
 	}
@@ -23,7 +24,7 @@ func (s *Server) defineTable(db *surrealdb.DB, table *pb.Table) error {
 	// } else {
 	// 	query = fmt.Sprintf(`DEFINE TABLE IF NOT EXISTS %s SCHEMALESS;`, tb)
 	// }
-	if err := db.Send(&ver, "query", query); err != nil {
+	if err := surrealdb.Send(ctx, db, &ver, "query", query); err != nil {
 		return err
 	}
 
@@ -52,7 +53,7 @@ func (s *Server) defineTable(db *surrealdb.DB, table *pb.Table) error {
 		if err != nil {
 			return err
 		}
-		if err := db.Send(&ver, "query", q); err != nil {
+		if err := surrealdb.Send(ctx, db, &ver, "query", q); err != nil {
 			return err
 		}
 		if s.debugging() {
@@ -65,7 +66,7 @@ func (s *Server) defineTable(db *surrealdb.DB, table *pb.Table) error {
 		if err != nil {
 			return err
 		}
-		if err := db.Send(&ver, "query", q); err != nil {
+		if err := surrealdb.Send(ctx, db, &ver, "query", q); err != nil {
 			return err
 		}
 		if s.debugging() {
@@ -76,7 +77,7 @@ func (s *Server) defineTable(db *surrealdb.DB, table *pb.Table) error {
 		if err != nil {
 			return err
 		}
-		if err := db.Send(&ver, "query", q); err != nil {
+		if err := surrealdb.Send(ctx, db, &ver, "query", q); err != nil {
 			return err
 		}
 		if s.debugging() {

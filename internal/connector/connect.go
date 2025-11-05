@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/surrealdb/surrealdb.go"
@@ -8,7 +9,7 @@ import (
 
 // connect connects to SurrealDB and returns a DB instance
 // The caller is responsible for "Use"ing ns/db after calling this function
-func (s *Server) connect(cfg config, schema string) (*surrealdb.DB, error) {
+func (s *Server) connect(ctx context.Context, cfg config, schema string) (*surrealdb.DB, error) {
 	db, err := surrealdb.New(cfg.url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to SurrealDB: %w", err)
@@ -21,14 +22,14 @@ func (s *Server) connect(cfg config, schema string) (*surrealdb.DB, error) {
 	// If you read this connector's implementation,
 	// you'll notice Fivetran calls our RPCs like `hey, create a table named <schema>.<table>`,
 	// and we interpret it as `ok let's create a table <table> in database <schema>`.
-	if err := db.Use(cfg.ns, schema); err != nil {
+	if err := db.Use(ctx, cfg.ns, schema); err != nil {
 		return nil, fmt.Errorf("failed to use namespace %s: %w", cfg.ns, err)
 	}
 
 	token := cfg.token
 
 	if token == "" {
-		token, err = db.SignIn(&surrealdb.Auth{
+		token, err = db.SignIn(ctx, &surrealdb.Auth{
 			Username: cfg.user,
 			Password: cfg.pass,
 			// Use `Use` instead of setting `Namespace` and `Database` here.
@@ -48,7 +49,7 @@ func (s *Server) connect(cfg config, schema string) (*surrealdb.DB, error) {
 	//
 	// Just for anyone reading this, by HTTP and WebSocket endpoints, I mean `http://localhost:8000/rpc` and `ws://localhost:8000/rpc`
 	// respectively.
-	if err := db.Authenticate(token); err != nil {
+	if err := db.Authenticate(ctx, token); err != nil {
 		return nil, fmt.Errorf("failed to authenticate with SurrealDB: %w", err)
 	}
 

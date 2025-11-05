@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -46,18 +47,18 @@ type ColumnMeta struct {
 
 var ErrTableNotFound = fmt.Errorf("table not found")
 
-func (s *Server) infoForTable(schemaName string, tableName string, configuration map[string]string) (tableInfo, error) {
+func (s *Server) infoForTable(ctx context.Context, schemaName string, tableName string, configuration map[string]string) (tableInfo, error) {
 	cfg, err := s.parseConfig(configuration)
 	if err != nil {
 		return tableInfo{}, fmt.Errorf("failed parsing info for table config: %v", err.Error())
 	}
 
-	db, err := s.connect(cfg, schemaName)
+	db, err := s.connect(ctx, cfg, schemaName)
 	if err != nil {
 		return tableInfo{}, err
 	}
 	defer func() {
-		if err := db.Close(); err != nil {
+		if err := db.Close(ctx); err != nil {
 			s.logWarning("failed to close db", err)
 		}
 	}()
@@ -82,7 +83,7 @@ func (s *Server) infoForTable(schemaName string, tableName string, configuration
 
 	query := fmt.Sprintf(`INFO FOR TABLE %s;`, tableName)
 
-	info, err := surrealdb.Query[InfoForTableResult](db, query, nil)
+	info, err := surrealdb.Query[InfoForTableResult](ctx, db, query, nil)
 	if err != nil {
 		return tableInfo{}, err
 	}
