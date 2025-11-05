@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -76,22 +77,24 @@ func main() {
 		}
 	}
 
+	ctx := context.Background()
+
 	// Connect to SurrealDB
-	db, err := surrealdb.New(endpoint)
+	db, err := surrealdb.FromEndpointURLString(ctx, endpoint)
 	if err != nil {
 		log.Fatalf("Error connecting to SurrealDB at %s: %v", endpoint, err)
 	}
-	defer db.Close()
+	defer db.Close(ctx)
 
 	// Use namespace and database first
-	_, err = db.Use(namespace, database)
+	err = db.Use(ctx, namespace, database)
 	if err != nil {
 		log.Fatalf("Error selecting namespace/database: %v", err)
 	}
 
 	if token != "" {
 		// If token is provided, use it for authentication
-		_, err = db.Authenticate(token)
+		err = db.Authenticate(ctx, token)
 		if err != nil {
 			log.Fatalf("Error authenticating with token: %v", err)
 		}
@@ -107,7 +110,7 @@ func main() {
 		}
 
 		// Sign in
-		token, err := db.Signin(map[string]interface{}{
+		token, err := db.SignIn(ctx, map[string]interface{}{
 			"user": username,
 			"pass": password,
 		})
@@ -116,7 +119,7 @@ func main() {
 		}
 
 		// Authenticate the connection
-		_, err = db.Authenticate(token.(string))
+		err = db.Authenticate(ctx, token)
 		if err != nil {
 			log.Fatalf("Error authenticating with SurrealDB: %v", err)
 		}
@@ -125,7 +128,7 @@ func main() {
 	// Truncate tables
 	for _, tableName := range tablesToTruncate {
 		query := fmt.Sprintf("DELETE %s", tableName)
-		_, err := db.Query(query, map[string]interface{}{})
+		_, err := surrealdb.Query[any](ctx, db, query, map[string]interface{}{})
 		if err != nil {
 			log.Printf("Error truncating table %s: %v", tableName, err)
 		} else {
