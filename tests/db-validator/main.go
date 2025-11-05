@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -39,13 +40,15 @@ func NewDBValidator() (*DBValidator, error) {
 		return nil, fmt.Errorf("failed to connect to SurrealDB: %v", err)
 	}
 
-	if err := db.Use(namespace, database); err != nil {
+	ctx := context.Background()
+
+	if err := db.Use(ctx, namespace, database); err != nil {
 		return nil, fmt.Errorf("failed to use namespace and database: %v", err)
 	}
 
 	if token != "" {
 		// If token is provided, use it for authentication
-		if err := db.Authenticate(token); err != nil {
+		if err := db.Authenticate(ctx, token); err != nil {
 			return nil, fmt.Errorf("failed to authenticate with token: %v", err)
 		}
 	} else {
@@ -64,13 +67,13 @@ func NewDBValidator() (*DBValidator, error) {
 			Username: username,
 			Password: password,
 		}
-		token, err := db.SignIn(auth)
+		token, err := db.SignIn(ctx, auth)
 		if err != nil {
 			return nil, fmt.Errorf("failed to sign in to SurrealDB: %v", err)
 		}
 
 		// Authenticate the connection
-		if err := db.Authenticate(token); err != nil {
+		if err := db.Authenticate(ctx, token); err != nil {
 			return nil, fmt.Errorf("failed to authenticate with SurrealDB: %v", err)
 		}
 	}
@@ -93,11 +96,11 @@ func loadExpectedTables(expectedPath string) (*ExpectedDBState, error) {
 	return &expected, nil
 }
 
-func (v *DBValidator) DumpCurrentState(tableNames []string) (map[string][]map[string]interface{}, error) {
+func (v *DBValidator) DumpCurrentState(ctx context.Context, tableNames []string) (map[string][]map[string]interface{}, error) {
 	result := make(map[string][]map[string]interface{})
 	for _, tableName := range tableNames {
 		// Query all records from the table
-		records, err := surrealdb.Select[[]map[string]interface{}](v.db, models.Table(tableName))
+		records, err := surrealdb.Select[[]map[string]interface{}](ctx, v.db, models.Table(tableName))
 		if err != nil {
 			return nil, fmt.Errorf("failed to select from table %s: %v", tableName, err)
 		}
@@ -110,7 +113,7 @@ func (v *DBValidator) DumpCurrentState(tableNames []string) (map[string][]map[st
 	return result, nil
 }
 
-func (v *DBValidator) CompareWithExpected(expectedPath string) error {
+func (v *DBValidator) CompareWithExpected(ctx context.Context, expectedPath string) error {
 	// Load expected tables from YAML
 	expected, err := loadExpectedTables(expectedPath)
 	if err != nil {
@@ -122,7 +125,7 @@ func (v *DBValidator) CompareWithExpected(expectedPath string) error {
 	for tableName := range expected.Tables {
 		tableNames = append(tableNames, tableName)
 	}
-	current, err := v.DumpCurrentState(tableNames)
+	current, err := v.DumpCurrentState(ctx, tableNames)
 	if err != nil {
 		return fmt.Errorf("failed to get current state: %v", err)
 	}
@@ -216,7 +219,9 @@ func main() {
 		log.Fatalf("Failed to create validator: %v", err)
 	}
 
-	if err := validator.CompareWithExpected(expectedPath); err != nil {
+	ctx := context.Background()
+
+	if err := validator.CompareWithExpected(ctx, expectedPath); err != nil {
 		log.Fatalf("Validation failed: %v", err)
 	}
 
