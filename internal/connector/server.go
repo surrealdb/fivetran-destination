@@ -1181,7 +1181,10 @@ func (s *Server) getPreviousValues(ctx context.Context, db *surrealdb.DB, fields
 	return (*req)[0].Result[0], nil
 }
 
-func (_ *Server) Migrate(context.Context, *pb.MigrateRequest) (*pb.MigrateResponse, error) {
+func (s *Server) Migrate(ctx context.Context, req *pb.MigrateRequest) (*pb.MigrateResponse, error) {
+	if err := s.migrate(ctx, req); err != nil {
+		return nil, fmt.Errorf("migration failed: %w", err)
+	}
 	return &pb.MigrateResponse{
 		Response: &pb.MigrateResponse_Success{
 			Success: true,
