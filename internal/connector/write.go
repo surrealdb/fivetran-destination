@@ -13,8 +13,8 @@ import (
 func (s *Server) batchReplace(ctx context.Context, db *surrealdb.DB, fields map[string]columnInfo, replaceFiles []string, fileParams *pb.FileParams, keys map[string][]byte, table *pb.Table) error {
 	unmodifiedString := fileParams.UnmodifiedString
 	return s.processCSVRecords(replaceFiles, fileParams, keys, func(columns []string, record []string) error {
-		if s.debugging() {
-			s.logDebug("Replacing record", "columns", columns, "record", record)
+		if s.Debugging() {
+			s.LogDebug("Replacing record", "columns", columns, "record", record)
 		}
 
 		values := make(map[string]string)
@@ -37,15 +37,15 @@ func (s *Server) batchReplace(ctx context.Context, db *surrealdb.DB, fields map[
 		vars := map[string]interface{}{}
 		for k, v := range values {
 			if unmodifiedString != "" && v == unmodifiedString {
-				if s.debugging() {
-					s.logDebug("Skipping unmodified column", "column", k, "value", v)
+				if s.Debugging() {
+					s.LogDebug("Skipping unmodified column", "column", k, "value", v)
 				}
 				continue
 			}
 
 			if k == "id" {
-				if s.debugging() {
-					s.logDebug("Skipping id column")
+				if s.Debugging() {
+					s.LogDebug("Skipping id column")
 				}
 				continue
 			}
@@ -83,8 +83,8 @@ func (s *Server) batchReplace(ctx context.Context, db *surrealdb.DB, fields map[
 			s.metrics.DBWriteCompleted(1)
 		}
 
-		if s.debugging() {
-			s.logDebug("Replaced record", "values", values, "thing", thing, "vars", fmt.Sprintf("%+v", vars), "result", fmt.Sprintf("%+v", *res))
+		if s.Debugging() {
+			s.LogDebug("Replaced record", "values", values, "thing", thing, "vars", fmt.Sprintf("%+v", vars), "result", fmt.Sprintf("%+v", *res))
 		}
 
 		return nil

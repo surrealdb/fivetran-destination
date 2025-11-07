@@ -12,13 +12,13 @@ import (
 )
 
 func (s *Server) writeBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb.WriteBatchResponse, error) {
-	if s.debugging() {
-		s.logDebug("WriteBatch called", "schema", req.SchemaName, "table", req.Table.Name, "config", req.Configuration)
-		s.logDebug("Replace files", "count", len(req.ReplaceFiles))
-		s.logDebug("Update files", "count", len(req.UpdateFiles))
-		s.logDebug("Delete files", "count", len(req.DeleteFiles))
-		s.logDebug("Keys", "keys", req.Keys)
-		s.logDebug("FileParams",
+	if s.Debugging() {
+		s.LogDebug("WriteBatch called", "schema", req.SchemaName, "table", req.Table.Name, "config", req.Configuration)
+		s.LogDebug("Replace files", "count", len(req.ReplaceFiles))
+		s.LogDebug("Update files", "count", len(req.UpdateFiles))
+		s.LogDebug("Delete files", "count", len(req.DeleteFiles))
+		s.LogDebug("Keys", "keys", req.Keys)
+		s.LogDebug("FileParams",
 			"compression", req.FileParams.Compression,
 			"encryption", req.FileParams.Encryption,
 			"null_string", req.FileParams.NullString,
@@ -48,12 +48,12 @@ func (s *Server) writeBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb
 	}
 	defer func() {
 		if err := db.Close(ctx); err != nil {
-			s.logWarning("failed to close db", err)
+			s.LogWarning("failed to close db", err)
 		}
 	}()
 
-	if s.debugging() {
-		s.logDebug("WriteBatch using", "namespace", cfg.ns, "database", req.SchemaName)
+	if s.Debugging() {
+		s.LogDebug("WriteBatch using", "namespace", cfg.ns, "database", req.SchemaName)
 	}
 
 	tb, err := s.infoForTable(ctx, req.SchemaName, req.Table.Name, req.Configuration)
@@ -114,8 +114,8 @@ func (s *Server) batchUpdate(ctx context.Context, db *surrealdb.DB, fields map[s
 	unmodifiedString := req.FileParams.UnmodifiedString
 
 	return s.processCSVRecords(req.UpdateFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
-		if s.debugging() {
-			s.logDebug("Updating record", "columns", columns, "record", record)
+		if s.Debugging() {
+			s.LogDebug("Updating record", "columns", columns, "record", record)
 		}
 
 		values := make(map[string]string)
@@ -150,8 +150,8 @@ func (s *Server) batchUpdate(ctx context.Context, db *surrealdb.DB, fields map[s
 		vars := map[string]interface{}{}
 		for k, v := range values {
 			if unmodifiedString != "" && v == unmodifiedString {
-				if s.debugging() {
-					s.logDebug("Skipping unmodified column", "column", k, "value", v)
+				if s.Debugging() {
+					s.LogDebug("Skipping unmodified column", "column", k, "value", v)
 				}
 				hasUnmodifiedColumns = true
 				continue
@@ -174,8 +174,8 @@ func (s *Server) batchUpdate(ctx context.Context, db *surrealdb.DB, fields map[s
 
 		var res *any
 		if hasUnmodifiedColumns {
-			if s.debugging() {
-				s.logDebug("Doing upsert-merge to deal with unmodified columns in update with soft-delete sync mode", "thing", thing, "vars", vars)
+			if s.Debugging() {
+				s.LogDebug("Doing upsert-merge to deal with unmodified columns in update with soft-delete sync mode", "thing", thing, "vars", vars)
 			}
 			var r any
 			r, err = s.upsertMerge(ctx, db, thing, vars)
@@ -201,8 +201,8 @@ func (s *Server) batchUpdate(ctx context.Context, db *surrealdb.DB, fields map[s
 			s.metrics.DBWriteCompleted(1)
 		}
 
-		if s.debugging() {
-			s.logDebug("Updated record", "thing", thing, "vars", vars, "result", *res)
+		if s.Debugging() {
+			s.LogDebug("Updated record", "thing", thing, "vars", vars, "result", *res)
 		}
 
 		return nil
@@ -235,8 +235,8 @@ func (s *Server) upsertMerge(ctx context.Context, db *surrealdb.DB, thing models
 // Reads CSV files and deletes existing records accordingly.
 func (s *Server) batchDelete(ctx context.Context, db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteBatchRequest) error {
 	return s.processCSVRecords(req.DeleteFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
-		if s.debugging() {
-			s.logDebug("Deleting record", "columns", columns, "record", record)
+		if s.Debugging() {
+			s.LogDebug("Deleting record", "columns", columns, "record", record)
 		}
 
 		values := make(map[string]string)
@@ -265,8 +265,8 @@ func (s *Server) batchDelete(ctx context.Context, db *surrealdb.DB, fields map[s
 			s.metrics.DBWriteCompleted(1)
 		}
 
-		if s.debugging() {
-			s.logDebug("Deleted record", "thing", thing, "result", res)
+		if s.Debugging() {
+			s.LogDebug("Deleted record", "thing", thing, "result", res)
 		}
 
 		return nil

@@ -9,6 +9,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
+	"github.com/surrealdb/fivetran-destination/internal/connector/log"
 )
 
 type testServer struct {
@@ -20,8 +21,8 @@ func newTestServer(level zerolog.Level) *testServer {
 	buf := &bytes.Buffer{}
 	return &testServer{
 		Server: Server{
-			Logging: &Logging{
-				logger: initLogger(buf, level),
+			Logging: &log.Logging{
+				Logger: log.InitLogger(buf, level),
 			},
 		},
 		buf: buf,
@@ -32,81 +33,52 @@ func (s *testServer) getLogOutput() string {
 	return s.buf.String()
 }
 
-func TestParseLogLevel(t *testing.T) {
-	levels := []struct {
-		input    string
-		expected zerolog.Level
-	}{
-		{"info", zerolog.InfoLevel},
-		{"warn", zerolog.WarnLevel},
-		{"error", zerolog.ErrorLevel},
-		{"debug", zerolog.DebugLevel},
-		{"INFO", zerolog.InfoLevel},
-		{"WARNING", zerolog.WarnLevel},
-		{"SEVERE", zerolog.ErrorLevel},
-	}
-
-	for _, level := range levels {
-		t.Run(fmt.Sprintf("input=%s", level.input), func(t *testing.T) {
-			result, err := parseLogLevel(level.input)
-			assert.Equal(t, level.expected, result)
-			assert.NoError(t, err)
-		})
-	}
-
-	t.Run("invalid", func(t *testing.T) {
-		result, err := parseLogLevel("invalid")
-		assert.Equal(t, zerolog.NoLevel, result)
-		assert.Error(t, err)
-	})
-}
-
 func TestLogInfo(t *testing.T) {
 	s := newTestServer(zerolog.InfoLevel)
-	s.logInfo("test message", "key", "value")
+	s.LogInfo("test message", "key", "value")
 
 	output := s.getLogOutput()
-	var log map[string]interface{}
-	if err := json.Unmarshal([]byte(output), &log); err != nil {
+	var msg map[string]interface{}
+	if err := json.Unmarshal([]byte(output), &msg); err != nil {
 		t.Fatalf("Failed to parse log output: %v", err)
 	}
 
 	expected := map[string]interface{}{
 		"level":          "INFO",
 		"message":        "test message",
-		"message-origin": MessageOrigin,
+		"message-origin": log.MessageOrigin,
 		"key":            "value",
 	}
 
-	assert.Subset(t, log, expected)
+	assert.Subset(t, msg, expected)
 
 	s = newTestServer(zerolog.WarnLevel)
-	s.logInfo("test message", "key", "value")
+	s.LogInfo("test message", "key", "value")
 	output = s.getLogOutput()
 	assert.Empty(t, output)
 }
 
 func TestLogWarning(t *testing.T) {
 	s := newTestServer(zerolog.WarnLevel)
-	s.logWarning("warning message", nil, "key", "value")
+	s.LogWarning("warning message", nil, "key", "value")
 
 	output := s.getLogOutput()
-	var log map[string]interface{}
-	if err := json.Unmarshal([]byte(output), &log); err != nil {
+	var msg map[string]interface{}
+	if err := json.Unmarshal([]byte(output), &msg); err != nil {
 		t.Fatalf("Failed to parse log output: %v", err)
 	}
 
 	expected := map[string]interface{}{
 		"level":          "WARNING",
 		"message":        "warning message",
-		"message-origin": MessageOrigin,
+		"message-origin": log.MessageOrigin,
 		"key":            "value",
 	}
 
-	assert.Subset(t, log, expected)
+	assert.Subset(t, msg, expected)
 
 	s = newTestServer(zerolog.ErrorLevel)
-	s.logWarning("warning message", nil, "key", "value")
+	s.LogWarning("warning message", nil, "key", "value")
 	output = s.getLogOutput()
 	assert.Empty(t, output)
 }
@@ -123,23 +95,23 @@ func TestLogSevere(t *testing.T) {
 		t.Run(fmt.Sprintf("level=%s", level), func(t *testing.T) {
 			s := newTestServer(level)
 			err := errors.New("test error")
-			s.logSevere("error message", err, "key", "value")
+			s.LogSevere("error message", err, "key", "value")
 
 			output := s.getLogOutput()
-			var log map[string]interface{}
-			if err := json.Unmarshal([]byte(output), &log); err != nil {
+			var msg map[string]interface{}
+			if err := json.Unmarshal([]byte(output), &msg); err != nil {
 				t.Fatalf("Failed to parse log output: %v", err)
 			}
 
 			expected := map[string]interface{}{
 				"level":          "SEVERE",
 				"message":        "error message",
-				"message-origin": MessageOrigin,
+				"message-origin": log.MessageOrigin,
 				"error":          "test error",
 				"key":            "value",
 			}
 
-			assert.Subset(t, log, expected)
+			assert.Subset(t, msg, expected)
 		})
 	}
 }
@@ -147,27 +119,27 @@ func TestLogSevere(t *testing.T) {
 func TestLogDebug(t *testing.T) {
 	// Test debug logging when debug is enabled
 	s := newTestServer(zerolog.DebugLevel)
-	s.logDebug("debug message", "key", "value")
+	s.LogDebug("debug message", "key", "value")
 
 	output := s.getLogOutput()
-	var log map[string]interface{}
-	if err := json.Unmarshal([]byte(output), &log); err != nil {
+	var msg map[string]interface{}
+	if err := json.Unmarshal([]byte(output), &msg); err != nil {
 		t.Fatalf("Failed to parse log output: %v", err)
 	}
 
 	expected := map[string]interface{}{
 		"level":          "INFO",
 		"message":        "debug message",
-		"message-origin": MessageOrigin,
+		"message-origin": log.MessageOrigin,
 		"debug":          true,
 		"key":            "value",
 	}
 
-	assert.Subset(t, log, expected)
+	assert.Subset(t, msg, expected)
 
 	// Test debug logging when debug is disabled
 	s = newTestServer(zerolog.InfoLevel)
-	s.logDebug("debug message", "key", "value")
+	s.LogDebug("debug message", "key", "value")
 	output = s.getLogOutput()
 	assert.Empty(t, output)
 }

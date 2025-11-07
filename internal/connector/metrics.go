@@ -195,7 +195,7 @@ func (mc *MetricsCollector) logMetrics() {
 		avgFileProcessingMs = float64(totalProcessNanos) / float64(totalFileProc) / 1e6
 	}
 
-	mc.logging.logInfo("Connector Performance Metrics",
+	mc.logging.LogInfo("Connector Performance Metrics",
 		"interval_seconds", elapsed,
 		"records_processed", records,
 		"records_per_second", mc.recordsPerSecond,

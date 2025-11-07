@@ -28,14 +28,14 @@ func (s *Server) defineTable(ctx context.Context, db *surrealdb.DB, table *pb.Ta
 		return err
 	}
 
-	s.logInfo("Defined table", "table", tb, "query", query)
+	s.LogInfo("Defined table", "table", tb, "query", query)
 
 	var historyMode bool
 
 	for i, c := range table.Columns {
 		if c.Name == "id" {
-			if s.debugging() {
-				s.logDebug("Skipping id")
+			if s.Debugging() {
+				s.LogDebug("Skipping id")
 			}
 			continue
 		}
@@ -56,8 +56,8 @@ func (s *Server) defineTable(ctx context.Context, db *surrealdb.DB, table *pb.Ta
 		if err := surrealdb.Send(ctx, db, &ver, "query", q); err != nil {
 			return err
 		}
-		if s.debugging() {
-			s.logDebug("Defined field", "field", c.Name, "table", tb, "query", q)
+		if s.Debugging() {
+			s.LogDebug("Defined field", "field", c.Name, "table", tb, "query", q)
 		}
 	}
 
@@ -69,8 +69,8 @@ func (s *Server) defineTable(ctx context.Context, db *surrealdb.DB, table *pb.Ta
 		if err := surrealdb.Send(ctx, db, &ver, "query", q); err != nil {
 			return err
 		}
-		if s.debugging() {
-			s.logDebug("Defined fivetran_start field index", "table", tb, "query", q)
+		if s.Debugging() {
+			s.LogDebug("Defined fivetran_start field index", "table", tb, "query", q)
 		}
 
 		q, err = s.defineFivetranPKIndex(table)
@@ -80,8 +80,8 @@ func (s *Server) defineTable(ctx context.Context, db *surrealdb.DB, table *pb.Ta
 		if err := surrealdb.Send(ctx, db, &ver, "query", q); err != nil {
 			return err
 		}
-		if s.debugging() {
-			s.logDebug("Defined pkcol index", "table", tb, "query", q)
+		if s.Debugging() {
+			s.LogDebug("Defined pkcol index", "table", tb, "query", q)
 		}
 	}
 	return nil

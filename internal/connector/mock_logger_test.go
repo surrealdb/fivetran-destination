@@ -24,13 +24,13 @@ func NewMockLogging() *MockLogging {
 	}
 }
 
-// debugging returns false for the mock
-func (m *MockLogging) debugging() bool {
+// Debugging returns false for the mock
+func (m *MockLogging) Debugging() bool {
 	return false
 }
 
-// logInfo captures info messages
-func (m *MockLogging) logInfo(msg string, fields ...interface{}) {
+// LogInfo captures info messages
+func (m *MockLogging) LogInfo(msg string, fields ...interface{}) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -42,8 +42,8 @@ func (m *MockLogging) logInfo(msg string, fields ...interface{}) {
 	m.messages = append(m.messages, logMsg)
 }
 
-// logWarning captures warning messages
-func (m *MockLogging) logWarning(msg string, err error, fields ...interface{}) {
+// LogWarning captures warning messages
+func (m *MockLogging) LogWarning(msg string, err error, fields ...interface{}) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -58,8 +58,8 @@ func (m *MockLogging) logWarning(msg string, err error, fields ...interface{}) {
 	m.messages = append(m.messages, logMsg)
 }
 
-// logSevere captures severe messages
-func (m *MockLogging) logSevere(msg string, err error, fields ...interface{}) {
+// LogSevere captures severe messages
+func (m *MockLogging) LogSevere(msg string, err error, fields ...interface{}) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -74,8 +74,8 @@ func (m *MockLogging) logSevere(msg string, err error, fields ...interface{}) {
 	m.messages = append(m.messages, logMsg)
 }
 
-// logDebug captures debug messages
-func (m *MockLogging) logDebug(msg string, fields ...interface{}) {
+// LogDebug captures debug messages
+func (m *MockLogging) LogDebug(msg string, fields ...interface{}) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

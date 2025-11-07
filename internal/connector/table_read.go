@@ -59,7 +59,7 @@ func (s *Server) infoForTable(ctx context.Context, schemaName string, tableName 
 	}
 	defer func() {
 		if err := db.Close(ctx); err != nil {
-			s.logWarning("failed to close db", err)
+			s.LogWarning("failed to close db", err)
 		}
 	}()
 
@@ -96,8 +96,8 @@ func (s *Server) infoForTable(ctx context.Context, schemaName string, tableName 
 
 	fields := first.Result.Fields
 
-	if s.debugging() {
-		s.logDebug("INFO FOR TABLE", "table", tableName, "fields", fields)
+	if s.Debugging() {
+		s.LogDebug("INFO FOR TABLE", "table", tableName, "fields", fields)
 	}
 
 	columns := []columnInfo{}
@@ -152,8 +152,8 @@ func (s *Server) infoForTable(ctx context.Context, schemaName string, tableName 
 	// 	PrimaryKey: true,
 	// })
 
-	if s.debugging() {
-		s.logDebug("Ran info for table", "table", tableName, "columns", columns)
+	if s.Debugging() {
+		s.LogDebug("Ran info for table", "table", tableName, "columns", columns)
 	}
 
 	sort.Slice(columns, func(i, j int) bool {
