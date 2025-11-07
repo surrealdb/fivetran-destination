@@ -1,0 +1,92 @@
+package connector
+
+import (
+	"context"
+	"fmt"
+
+	pb "github.com/surrealdb/fivetran-destination/internal/pb"
+	"github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
+)
+
+// Reads CSV files and replaces existing records accordingly.
+func (s *Server) batchReplace(ctx context.Context, db *surrealdb.DB, fields map[string]columnInfo, replaceFiles []string, fileParams *pb.FileParams, keys map[string][]byte, table *pb.Table) error {
+	unmodifiedString := fileParams.UnmodifiedString
+	return s.processCSVRecords(replaceFiles, fileParams, keys, func(columns []string, record []string) error {
+		if s.debugging() {
+			s.logDebug("Replacing record", "columns", columns, "record", record)
+		}
+
+		values := make(map[string]string)
+		for i, column := range columns {
+			values[column] = record[i]
+		}
+
+		cols, vals, err := s.getPKColumnsAndValues(values, table)
+		if err != nil {
+			return fmt.Errorf("unable to get primary key columns and values for record %v: %w", values, err)
+		}
+
+		var thing models.RecordID
+		if len(cols) == 1 {
+			thing = models.NewRecordID(table.Name, vals[0])
+		} else {
+			thing = models.NewRecordID(table.Name, vals)
+		}
+
+		vars := map[string]interface{}{}
+		for k, v := range values {
+			if unmodifiedString != "" && v == unmodifiedString {
+				if s.debugging() {
+					s.logDebug("Skipping unmodified column", "column", k, "value", v)
+				}
+				continue
+			}
+
+			if k == "id" {
+				if s.debugging() {
+					s.logDebug("Skipping id column")
+				}
+				continue
+			}
+
+			f, ok := fields[k]
+			if !ok {
+				return fmt.Errorf("column %s not found in the table info: %v", k, fields)
+			}
+
+			if v == fileParams.NullString {
+				vars[k] = models.None
+				continue
+			}
+
+			var typedV interface{}
+
+			typedV, err := f.strToSurrealType(v)
+			if err != nil {
+				return err
+			}
+
+			vars[k] = typedV
+		}
+
+		res, err := surrealdb.Upsert[any](ctx, db, thing, vars)
+		if err != nil {
+			if s.metrics != nil {
+				s.metrics.DBWriteError()
+			}
+			return fmt.Errorf("unable to upsert record %s: %w", thing, err)
+		}
+
+		// Track successful DB write
+		if s.metrics != nil {
+			s.metrics.DBWriteCompleted(1)
+		}
+
+		if s.debugging() {
+			s.logDebug("Replaced record", "values", values, "thing", thing, "vars", fmt.Sprintf("%+v", vars), "result", fmt.Sprintf("%+v", *res))
+		}
+
+		return nil
+	})
+}
