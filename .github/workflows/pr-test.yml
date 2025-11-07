@@ -45,6 +45,20 @@ jobs:
           go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
+      # Start SurrealDB
+      - name: Start SurrealDB
+        run: |
+          docker run -d --name surrealdb -p 8000:8000 surrealdb/surrealdb:v2.3.7 start --user root --pass root
+          # Wait for SurrealDB to be ready
+          for i in {1..30}; do
+            if curl -f http://localhost:8000/health 2>/dev/null; then
+              echo "SurrealDB is ready"
+              break
+            fi
+            echo "Waiting for SurrealDB to start... ($i/30)"
+            sleep 2
+          done
+
       - name: Run Go tests
         run: |
           go test -v ./...
