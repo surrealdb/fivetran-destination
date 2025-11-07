@@ -153,7 +153,7 @@ func (s *Server) Test(ctx context.Context, req *pb.TestRequest) (*pb.TestRespons
 		}, err
 	}
 
-	if _, err := s.connect(ctx, cfg, ""); err != nil {
+	if _, err := s.connect(ctx, cfg); err != nil {
 		s.LogSevere("Failed to connect to database", err,
 			"config_name", req.Name)
 		return &pb.TestResponse{
@@ -242,7 +242,7 @@ func (s *Server) CreateTable(ctx context.Context, req *pb.CreateTableRequest) (*
 		}, err
 	}
 
-	db, err := s.connect(ctx, cfg, req.SchemaName)
+	db, err := s.connectAndUse(ctx, cfg, req.SchemaName)
 	if err != nil {
 		return &pb.CreateTableResponse{
 			// success, warning, task
@@ -314,7 +314,7 @@ func (s *Server) AlterTable(ctx context.Context, req *pb.AlterTableRequest) (*pb
 		s.LogDebug("AlterTable config", "config", cfg)
 	}
 
-	db, err := s.connect(ctx, cfg, req.SchemaName)
+	db, err := s.connectAndUse(ctx, cfg, req.SchemaName)
 	if err != nil {
 		return &pb.AlterTableResponse{
 			Response: &pb.AlterTableResponse_Warning{

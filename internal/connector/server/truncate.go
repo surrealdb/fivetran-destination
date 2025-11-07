@@ -41,7 +41,7 @@ func (s *Server) truncate(ctx context.Context, req *pb.TruncateRequest) (*pb.Tru
 		}, err
 	}
 
-	db, err := s.connect(ctx, cfg, req.SchemaName)
+	db, err := s.connectAndUse(ctx, cfg, req.SchemaName)
 	if err != nil {
 		return &pb.TruncateResponse{
 			Response: &pb.TruncateResponse_Warning{

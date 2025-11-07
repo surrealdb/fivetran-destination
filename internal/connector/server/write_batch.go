@@ -36,7 +36,7 @@ func (s *Server) writeBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb
 		}, err
 	}
 
-	db, err := s.connect(ctx, cfg, req.SchemaName)
+	db, err := s.connectAndUse(ctx, cfg, req.SchemaName)
 	if err != nil {
 		return &pb.WriteBatchResponse{
 			Response: &pb.WriteBatchResponse_Warning{
