@@ -72,7 +72,7 @@ func (s *Server) writeBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb
 		fields[column.Name] = column
 	}
 
-	if err := s.batchReplace(ctx, db, fields, req.ReplaceFiles, req.FileParams, req.Keys, req.Table); err != nil {
+	if err := s.handleReplaceFiles(ctx, db, fields, req.ReplaceFiles, req.FileParams, req.Keys, req.Table); err != nil {
 		return &pb.WriteBatchResponse{
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
