@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
@@ -10,17 +11,29 @@ import (
 func (s *Server) migrate(ctx context.Context, req *pb.MigrateRequest) error {
 	switch v := req.Details.Operation.(type) {
 	case *pb.MigrationDetails_Drop:
-		s.migrateDrop(ctx, req)
+		if err := s.migrateDrop(ctx, req); err != nil {
+			return err
+		}
 	case *pb.MigrationDetails_Copy:
-		s.migrateCopy(ctx, req)
+		if err := s.migrateCopy(ctx, req); err != nil {
+			return err
+		}
 	case *pb.MigrationDetails_Rename:
-		s.migrateRename(ctx, req)
+		if err := s.migrateRename(ctx, req); err != nil {
+			return err
+		}
 	case *pb.MigrationDetails_Add:
-		s.migrateAdd(ctx, req)
+		if err := s.migrateAdd(ctx, req); err != nil {
+			return err
+		}
 	case *pb.MigrationDetails_UpdateColumnValue:
-		s.migrateUpdateColumnValue(ctx, req)
+		if err := s.migrateUpdateColumnValue(ctx, req); err != nil {
+			return err
+		}
 	case *pb.MigrationDetails_TableSyncModeMigration:
-		s.migrateTableSyncModeMigration(ctx, req)
+		if err := s.migrateTableSyncModeMigration(ctx, req); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unknown migration operation: %T", v)
 	}
@@ -29,30 +42,30 @@ func (s *Server) migrate(ctx context.Context, req *pb.MigrateRequest) error {
 
 func (s *Server) migrateDrop(_ context.Context, _ *pb.MigrateRequest) error {
 	// Implement drop logic here
-	return nil
+	return errors.New("drop migration not implemented yet")
 }
 
 func (s *Server) migrateCopy(_ context.Context, _ *pb.MigrateRequest) error {
 	// Implement copy logic here
-	return nil
+	return errors.New("copy migration not implemented yet")
 }
 
 func (s *Server) migrateRename(_ context.Context, _ *pb.MigrateRequest) error {
 	// Implement rename logic here
-	return nil
+	return errors.New("rename migration not implemented yet")
 }
 
 func (s *Server) migrateAdd(_ context.Context, _ *pb.MigrateRequest) error {
 	// Implement add logic here
-	return nil
+	return errors.New("add migration not implemented yet")
 }
 
 func (s *Server) migrateUpdateColumnValue(_ context.Context, _ *pb.MigrateRequest) error {
 	// Implement update column value logic here
-	return nil
+	return errors.New("update column value migration not implemented yet")
 }
 
 func (s *Server) migrateTableSyncModeMigration(_ context.Context, _ *pb.MigrateRequest) error {
 	// Implement table sync mode migration logic here
-	return nil
+	return errors.New("table sync mode migration not implemented yet")
 }
