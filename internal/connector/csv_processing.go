@@ -6,6 +6,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/surrealdb/fivetran-destination/internal/connector/ftio"
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
 )
 
@@ -96,7 +97,7 @@ func (s *Server) openFivetranFile(file string, fileParams *pb.FileParams, keys m
 		return nil, fmt.Errorf("key not found for file: %s", file)
 	}
 
-	r, err := NewFivetranFileReader(file, key)
+	r, err := ftio.NewFivetranFileReader(file, key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create fivetran file reader: %w", err)
 	}
