@@ -10,6 +10,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
+// writeHistoryBatch handles the WriteHistoryBatch request from Fivetran.
 func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatchRequest) (*pb.WriteBatchResponse, error) {
 	if s.Debugging() {
 		s.LogDebug("WriteHistoryBatch called", "schema", req.SchemaName, "table", req.Table.Name)
@@ -75,7 +76,8 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 		s.LogDebug("Batch processing earliest start files")
 	}
 
-	if err := s.batchProcessEarliestStartFiles(ctx, db, fields, req); err != nil {
+	// See "EARLIEST START FILE" in https://github.com/fivetran/fivetran_partner_sdk/blob/main/history_mode.png
+	if err := s.handleEarliestStartFiles(ctx, db, fields, req); err != nil {
 		return &pb.WriteBatchResponse{
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
@@ -89,7 +91,8 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 		s.LogDebug("Batch processing replace files")
 	}
 
-	if err := s.batchReplace(ctx, db, fields, req.ReplaceFiles, req.FileParams, req.Keys, req.Table); err != nil {
+	// We assume this corresponds to "UPSERT BATCH FILE" in https://github.com/fivetran/fivetran_partner_sdk/blob/main/history_mode.png
+	if err := s.handleReplaceFiles(ctx, db, fields, req.ReplaceFiles, req.FileParams, req.Keys, req.Table); err != nil {
 		return &pb.WriteBatchResponse{
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
@@ -103,7 +106,8 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 		s.LogDebug("Batch processing update files")
 	}
 
-	if err := s.batchHistoryUpdate(ctx, db, fields, req); err != nil {
+	// We assume this corresponds to "UPDATE BATCH FILE" in https://github.com/fivetran/fivetran_partner_sdk/blob/main/history_mode.png
+	if err := s.handleUpdateFiles(ctx, db, fields, req); err != nil {
 		return &pb.WriteBatchResponse{
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
@@ -117,7 +121,10 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 		s.LogDebug("Batch processing delete files")
 	}
 
-	if err := s.batchReplace(ctx, db, fields, req.DeleteFiles, req.FileParams, req.Keys, req.Table); err != nil {
+	// TODO We probably need to have handleDeleteFiles specifically for DeleteFiles
+	// Once that's done this will correspond to "DELETE BATCH FILE" in
+	// https://github.com/fivetran/fivetran_partner_sdk/blob/main/history_mode.png
+	if err := s.handleReplaceFiles(ctx, db, fields, req.DeleteFiles, req.FileParams, req.Keys, req.Table); err != nil {
 		return &pb.WriteBatchResponse{
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
@@ -134,7 +141,7 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 	}, nil
 }
 
-func (s *Server) batchProcessEarliestStartFiles(ctx context.Context, db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteHistoryBatchRequest) error {
+func (s *Server) handleEarliestStartFiles(ctx context.Context, db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteHistoryBatchRequest) error {
 	return s.processCSVRecords(req.EarliestStartFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
 		if s.Debugging() {
 			s.LogDebug("Processing earliest start file", "columns", columns, "record", record)
@@ -202,7 +209,7 @@ func (s *Server) batchProcessEarliestStartFiles(ctx context.Context, db *surreal
 	})
 }
 
-func (s *Server) batchHistoryUpdate(ctx context.Context, db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteHistoryBatchRequest) error {
+func (s *Server) handleUpdateFiles(ctx context.Context, db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteHistoryBatchRequest) error {
 	return s.processCSVRecords(req.UpdateFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
 		if s.Debugging() {
 			s.LogDebug("Processing update file", "columns", columns, "record", record)
