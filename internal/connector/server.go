@@ -9,6 +9,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/surrealdb/fivetran-destination/internal/connector/log"
+	"github.com/surrealdb/fivetran-destination/internal/connector/metrics"
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
 	_ "google.golang.org/grpc/encoding/gzip"
 )
@@ -37,7 +38,7 @@ func NewServer(logger zerolog.Logger) *Server {
 	return &Server{
 		mu:      &sync.Mutex{},
 		Logging: logging,
-		metrics: NewMetricsCollector(logging, metricsInterval),
+		metrics: metrics.NewCollector(logging, metricsInterval),
 	}
 }
 
@@ -47,7 +48,7 @@ type Server struct {
 	mu *sync.Mutex
 
 	*log.Logging
-	metrics *MetricsCollector
+	metrics *metrics.Collector
 }
 
 // Start initializes and starts the server components
@@ -55,7 +56,7 @@ func (s *Server) Start(ctx context.Context) {
 	// Start metrics collection
 	if s.metrics != nil {
 		s.metrics.Start(ctx)
-		s.LogInfo("Metrics collection started", "interval", s.metrics.logInterval)
+		s.LogInfo("Metrics collection started", "interval", s.metrics.LogInterval)
 	}
 }
 

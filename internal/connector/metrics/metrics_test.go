@@ -1,4 +1,4 @@
-package connector
+package metrics
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 func TestMetricsCollector(t *testing.T) {
 	mockLogger := NewMockLogging()
 
-	mc := NewMetricsCollector(mockLogger, 100*time.Millisecond)
+	mc := NewCollector(mockLogger, 100*time.Millisecond)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -70,7 +70,7 @@ func TestMetricsCollector(t *testing.T) {
 func TestMetricsInServer(t *testing.T) {
 	mockLogger := NewMockLogging()
 
-	mc := NewMetricsCollector(mockLogger, 100*time.Millisecond)
+	mc := NewCollector(mockLogger, 100*time.Millisecond)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -94,7 +94,7 @@ func TestMetricsInServer(t *testing.T) {
 
 func TestMetricsCollectorWithFileProcessing(t *testing.T) {
 	mockLogger := NewMockLogging()
-	mc := NewMetricsCollector(mockLogger, 50*time.Millisecond)
+	mc := NewCollector(mockLogger, 50*time.Millisecond)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
