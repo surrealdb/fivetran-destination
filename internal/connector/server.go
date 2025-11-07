@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/surrealdb/fivetran-destination/internal/connector/log"
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
 	_ "google.golang.org/grpc/encoding/gzip"
 )
@@ -17,12 +18,12 @@ func LoggerFromEnv() (zerolog.Logger, error) {
 	if os.Getenv("SURREAL_FIVETRAN_DEBUG") != "" {
 		level = zerolog.DebugLevel
 	}
-	return initLogger(nil, level), nil
+	return log.InitLogger(nil, level), nil
 }
 
 func NewServer(logger zerolog.Logger) *Server {
-	logging := &Logging{
-		logger: logger,
+	logging := &log.Logging{
+		Logger: logger,
 	}
 
 	// Get metrics interval from environment variable
@@ -45,7 +46,7 @@ type Server struct {
 
 	mu *sync.Mutex
 
-	*Logging
+	*log.Logging
 	metrics *MetricsCollector
 }
 
@@ -54,7 +55,7 @@ func (s *Server) Start(ctx context.Context) {
 	// Start metrics collection
 	if s.metrics != nil {
 		s.metrics.Start(ctx)
-		s.logInfo("Metrics collection started", "interval", s.metrics.logInterval)
+		s.LogInfo("Metrics collection started", "interval", s.metrics.logInterval)
 	}
 }
 
@@ -117,8 +118,8 @@ func (s *Server) ConfigurationForm(ctx context.Context, req *pb.ConfigurationFor
 		Label: "Database Connection",
 	})
 
-	if s.debugging() {
-		s.logDebug("ConfigurationForm called")
+	if s.Debugging() {
+		s.LogDebug("ConfigurationForm called")
 	}
 	return &pb.ConfigurationFormResponse{
 		Fields: fields,
@@ -128,8 +129,8 @@ func (s *Server) ConfigurationForm(ctx context.Context, req *pb.ConfigurationFor
 
 // Capabilities implements the Capabilities method required by the DestinationConnectorServer interface
 func (s *Server) Capabilities(ctx context.Context, req *pb.CapabilitiesRequest) (*pb.CapabilitiesResponse, error) {
-	if s.debugging() {
-		s.logDebug("Capabilities called")
+	if s.Debugging() {
+		s.LogDebug("Capabilities called")
 	}
 	return &pb.CapabilitiesResponse{
 		// TODO: Parquet support?
@@ -144,13 +145,13 @@ func (s *Server) Capabilities(ctx context.Context, req *pb.CapabilitiesRequest) 
 // included in the configuration.
 func (s *Server) Test(ctx context.Context, req *pb.TestRequest) (*pb.TestResponse, error) {
 	startTime := time.Now()
-	s.logDebug("Starting configuration test",
+	s.LogDebug("Starting configuration test",
 		"config_name", req.Name,
 		"config", req.Configuration)
 
 	cfg, err := s.parseConfig(req.Configuration)
 	if err != nil {
-		s.logSevere("Failed to parse test configuration", err,
+		s.LogSevere("Failed to parse test configuration", err,
 			"config_name", req.Name)
 		return &pb.TestResponse{
 			Response: &pb.TestResponse_Failure{
@@ -160,7 +161,7 @@ func (s *Server) Test(ctx context.Context, req *pb.TestRequest) (*pb.TestRespons
 	}
 
 	if _, err := s.connect(ctx, cfg, ""); err != nil {
-		s.logSevere("Failed to connect to database", err,
+		s.LogSevere("Failed to connect to database", err,
 			"config_name", req.Name)
 		return &pb.TestResponse{
 			Response: &pb.TestResponse_Failure{
@@ -169,7 +170,7 @@ func (s *Server) Test(ctx context.Context, req *pb.TestRequest) (*pb.TestRespons
 		}, err
 	}
 
-	s.logDebug("Finished configuration test",
+	s.LogDebug("Finished configuration test",
 		"config_name", req.Name,
 		"duration_ms", time.Since(startTime).Milliseconds())
 
@@ -182,8 +183,8 @@ func (s *Server) Test(ctx context.Context, req *pb.TestRequest) (*pb.TestRespons
 
 // DescribeTable implements the DescribeTable method required by the DestinationConnectorServer interface
 func (s *Server) DescribeTable(ctx context.Context, req *pb.DescribeTableRequest) (*pb.DescribeTableResponse, error) {
-	if s.debugging() {
-		s.logDebug("DescribeTable called", "schema", req.SchemaName, "table", req.TableName, "config", req.Configuration)
+	if s.Debugging() {
+		s.LogDebug("DescribeTable called", "schema", req.SchemaName, "table", req.TableName, "config", req.Configuration)
 	}
 	tb, err := s.infoForTable(ctx, req.SchemaName, req.TableName, req.Configuration)
 	if err != nil {
@@ -204,8 +205,8 @@ func (s *Server) DescribeTable(ctx context.Context, req *pb.DescribeTableRequest
 		}, err
 	}
 
-	if s.debugging() {
-		s.logDebug("infoForTable result", "table_info", tb)
+	if s.Debugging() {
+		s.LogDebug("infoForTable result", "table_info", tb)
 	}
 
 	ftColumns, err := s.columnsFromSurrealToFivetran(tb.columns)
@@ -233,8 +234,8 @@ func (s *Server) DescribeTable(ctx context.Context, req *pb.DescribeTableRequest
 
 // CreateTable implements the CreateTable method required by the DestinationConnectorServer interface
 func (s *Server) CreateTable(ctx context.Context, req *pb.CreateTableRequest) (*pb.CreateTableResponse, error) {
-	if s.debugging() {
-		s.logDebug("CreateTable called", "schema", req.SchemaName, "table", req.Table.Name)
+	if s.Debugging() {
+		s.LogDebug("CreateTable called", "schema", req.SchemaName, "table", req.Table.Name)
 	}
 
 	cfg, err := s.parseConfig(req.Configuration)
@@ -261,7 +262,7 @@ func (s *Server) CreateTable(ctx context.Context, req *pb.CreateTableRequest) (*
 	}
 	defer func() {
 		if err := db.Close(ctx); err != nil {
-			s.logWarning("failed to close db", err)
+			s.LogWarning("failed to close db", err)
 		}
 	}()
 
@@ -288,8 +289,8 @@ func (s *Server) CreateTable(ctx context.Context, req *pb.CreateTableRequest) (*
 		}, err
 	}
 
-	if s.debugging() {
-		s.logDebug("infoForTable result", "table_info", tbInfo)
+	if s.Debugging() {
+		s.LogDebug("infoForTable result", "table_info", tbInfo)
 	}
 
 	return &pb.CreateTableResponse{
@@ -302,8 +303,8 @@ func (s *Server) CreateTable(ctx context.Context, req *pb.CreateTableRequest) (*
 
 // AlterTable implements the AlterTable method required by the DestinationConnectorServer interface
 func (s *Server) AlterTable(ctx context.Context, req *pb.AlterTableRequest) (*pb.AlterTableResponse, error) {
-	if s.debugging() {
-		s.logDebug("AlterTable called", "schema", req.SchemaName, "table", req.Table.Name)
+	if s.Debugging() {
+		s.LogDebug("AlterTable called", "schema", req.SchemaName, "table", req.Table.Name)
 	}
 	cfg, err := s.parseConfig(req.Configuration)
 	if err != nil {
@@ -316,8 +317,8 @@ func (s *Server) AlterTable(ctx context.Context, req *pb.AlterTableRequest) (*pb
 		}, err
 	}
 
-	if s.debugging() {
-		s.logDebug("AlterTable config", "config", cfg)
+	if s.Debugging() {
+		s.LogDebug("AlterTable config", "config", cfg)
 	}
 
 	db, err := s.connect(ctx, cfg, req.SchemaName)
@@ -332,7 +333,7 @@ func (s *Server) AlterTable(ctx context.Context, req *pb.AlterTableRequest) (*pb
 	}
 	defer func() {
 		if err := db.Close(ctx); err != nil {
-			s.logWarning("failed to close db", err)
+			s.LogWarning("failed to close db", err)
 		}
 	}()
 
@@ -357,8 +358,8 @@ func (s *Server) AlterTable(ctx context.Context, req *pb.AlterTableRequest) (*pb
 		}, err
 	}
 
-	if s.debugging() {
-		s.logDebug("infoForTable result", "table_info", tbInfo)
+	if s.Debugging() {
+		s.LogDebug("infoForTable result", "table_info", tbInfo)
 	}
 
 	return &pb.AlterTableResponse{

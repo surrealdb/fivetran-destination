@@ -11,13 +11,13 @@ import (
 )
 
 func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatchRequest) (*pb.WriteBatchResponse, error) {
-	if s.debugging() {
-		s.logDebug("WriteHistoryBatch called", "schema", req.SchemaName, "table", req.Table.Name)
-		s.logDebug("Earliest start files", "count", len(req.EarliestStartFiles))
-		s.logDebug("Replace files", "count", len(req.ReplaceFiles))
-		s.logDebug("Update files", "count", len(req.UpdateFiles))
-		s.logDebug("Delete files", "count", len(req.DeleteFiles))
-		s.logDebug("FileParams",
+	if s.Debugging() {
+		s.LogDebug("WriteHistoryBatch called", "schema", req.SchemaName, "table", req.Table.Name)
+		s.LogDebug("Earliest start files", "count", len(req.EarliestStartFiles))
+		s.LogDebug("Replace files", "count", len(req.ReplaceFiles))
+		s.LogDebug("Update files", "count", len(req.UpdateFiles))
+		s.LogDebug("Delete files", "count", len(req.DeleteFiles))
+		s.LogDebug("FileParams",
 			"compression", req.FileParams.Compression,
 			"encryption", req.FileParams.Encryption,
 			"null_string", req.FileParams.NullString,
@@ -47,12 +47,12 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 	}
 	defer func() {
 		if err := db.Close(ctx); err != nil {
-			s.logWarning("failed to close db", err)
+			s.LogWarning("failed to close db", err)
 		}
 	}()
 
-	if s.debugging() {
-		s.logDebug("WriteHistoryBatch using", "namespace", cfg.ns, "database", req.SchemaName)
+	if s.Debugging() {
+		s.LogDebug("WriteHistoryBatch using", "namespace", cfg.ns, "database", req.SchemaName)
 	}
 
 	tb, err := s.infoForTable(ctx, req.SchemaName, req.Table.Name, req.Configuration)
@@ -71,8 +71,8 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 		fields[column.Name] = column
 	}
 
-	if s.debugging() {
-		s.logDebug("Batch processing earliest start files")
+	if s.Debugging() {
+		s.LogDebug("Batch processing earliest start files")
 	}
 
 	if err := s.batchProcessEarliestStartFiles(ctx, db, fields, req); err != nil {
@@ -85,8 +85,8 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 		}, err
 	}
 
-	if s.debugging() {
-		s.logDebug("Batch processing replace files")
+	if s.Debugging() {
+		s.LogDebug("Batch processing replace files")
 	}
 
 	if err := s.batchReplace(ctx, db, fields, req.ReplaceFiles, req.FileParams, req.Keys, req.Table); err != nil {
@@ -99,8 +99,8 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 		}, err
 	}
 
-	if s.debugging() {
-		s.logDebug("Batch processing update files")
+	if s.Debugging() {
+		s.LogDebug("Batch processing update files")
 	}
 
 	if err := s.batchHistoryUpdate(ctx, db, fields, req); err != nil {
@@ -113,8 +113,8 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 		}, err
 	}
 
-	if s.debugging() {
-		s.logDebug("Batch processing delete files")
+	if s.Debugging() {
+		s.LogDebug("Batch processing delete files")
 	}
 
 	if err := s.batchReplace(ctx, db, fields, req.DeleteFiles, req.FileParams, req.Keys, req.Table); err != nil {
@@ -136,8 +136,8 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 
 func (s *Server) batchProcessEarliestStartFiles(ctx context.Context, db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteHistoryBatchRequest) error {
 	return s.processCSVRecords(req.EarliestStartFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
-		if s.debugging() {
-			s.logDebug("Processing earliest start file", "columns", columns, "record", record)
+		if s.Debugging() {
+			s.LogDebug("Processing earliest start file", "columns", columns, "record", record)
 		}
 
 		values := make(map[string]string)
@@ -145,8 +145,8 @@ func (s *Server) batchProcessEarliestStartFiles(ctx context.Context, db *surreal
 			values[column] = record[i]
 		}
 
-		if s.debugging() {
-			s.logDebug("Earliest start record", "values", values)
+		if s.Debugging() {
+			s.LogDebug("Earliest start record", "values", values)
 		}
 
 		cols, _, err := s.getPKColumnsAndValues(values, req.Table)
@@ -194,8 +194,8 @@ func (s *Server) batchProcessEarliestStartFiles(ctx context.Context, db *surreal
 			return fmt.Errorf("unable to delete from table %s: %w", req.Table.Name, err)
 		}
 
-		if s.debugging() {
-			s.logDebug("Removed records", "byID", byID, "_fivetran_start_gt", vars["_fivetran_start"], "result", *res)
+		if s.Debugging() {
+			s.LogDebug("Removed records", "byID", byID, "_fivetran_start_gt", vars["_fivetran_start"], "result", *res)
 		}
 
 		return nil
@@ -204,8 +204,8 @@ func (s *Server) batchProcessEarliestStartFiles(ctx context.Context, db *surreal
 
 func (s *Server) batchHistoryUpdate(ctx context.Context, db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteHistoryBatchRequest) error {
 	return s.processCSVRecords(req.UpdateFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
-		if s.debugging() {
-			s.logDebug("Processing update file", "columns", columns, "record", record)
+		if s.Debugging() {
+			s.LogDebug("Processing update file", "columns", columns, "record", record)
 		}
 
 		values := make(map[string]string)
@@ -213,8 +213,8 @@ func (s *Server) batchHistoryUpdate(ctx context.Context, db *surrealdb.DB, field
 			values[column] = record[i]
 		}
 
-		if s.debugging() {
-			s.logDebug("batchHistoryUpdate record", "values", values)
+		if s.Debugging() {
+			s.LogDebug("batchHistoryUpdate record", "values", values)
 		}
 
 		var id any
@@ -233,8 +233,8 @@ func (s *Server) batchHistoryUpdate(ctx context.Context, db *surrealdb.DB, field
 		vars := map[string]interface{}{}
 		for k, v := range values {
 			if k == "id" {
-				if s.debugging() {
-					s.logDebug("Skipping id")
+				if s.Debugging() {
+					s.LogDebug("Skipping id")
 				}
 				continue
 			}
@@ -345,8 +345,8 @@ func (s *Server) upsertHistoryMode(ctx context.Context, db *surrealdb.DB, thing 
 		return fmt.Errorf("unable to upsert record %s: %w", thing, err)
 	}
 
-	if s.debugging() {
-		s.logDebug("Added history record", "thing", thing, "vars", vars, "result", *res)
+	if s.Debugging() {
+		s.LogDebug("Added history record", "thing", thing, "vars", vars, "result", *res)
 	}
 
 	return nil
