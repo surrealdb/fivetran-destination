@@ -53,7 +53,7 @@ func (s *Server) infoForTable(ctx context.Context, schemaName string, tableName 
 		return tableInfo{}, fmt.Errorf("failed parsing info for table config: %v", err.Error())
 	}
 
-	db, err := s.connect(ctx, cfg, schemaName)
+	db, err := s.connectAndUse(ctx, cfg, schemaName)
 	if err != nil {
 		return tableInfo{}, err
 	}

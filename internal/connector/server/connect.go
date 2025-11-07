@@ -8,22 +8,19 @@ import (
 )
 
 // connect connects to SurrealDB and returns a DB instance
+//
+// It authenticates against the SurrealDB instance as a namespace-level user
+// with the SurrealDB namespace specified in cfg.ns (via ConfigurationForm).
+//
+// Depending on whether cfg.token is set, it either uses the provided token for authentication,
+// or performs a sign-in using the provided username and password.
+//
 // The caller is responsible for "Use"ing ns/db after calling this function
-func (s *Server) connect(ctx context.Context, cfg config, schema string) (*surrealdb.DB, error) {
+// Use connectAndUse if you want to connect and use a specific database right away.
+func (s *Server) connect(ctx context.Context, cfg config) (*surrealdb.DB, error) {
 	db, err := surrealdb.FromEndpointURLString(ctx, cfg.url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to SurrealDB: %w", err)
-	}
-
-	// Note that we assume Fivetran `schema` is the same as SurrealDB `database`.
-	// So we treat SurrealDB `namespace` as a global setting, that limits every operation from this
-	// connector to SurrealDB within the namespace.
-	//
-	// If you read this connector's implementation,
-	// you'll notice Fivetran calls our RPCs like `hey, create a table named <schema>.<table>`,
-	// and we interpret it as `ok let's create a table <table> in database <schema>`.
-	if err := db.Use(ctx, cfg.ns, schema); err != nil {
-		return nil, fmt.Errorf("failed to use namespace %s: %w", cfg.ns, err)
 	}
 
 	token := cfg.token
@@ -32,11 +29,9 @@ func (s *Server) connect(ctx context.Context, cfg config, schema string) (*surre
 		token, err = db.SignIn(ctx, &surrealdb.Auth{
 			Username: cfg.user,
 			Password: cfg.pass,
-			// Use `Use` instead of setting `Namespace` and `Database` here.
-			// Otherwise, you end up with: failed to sign in to SurrealDB: namespace or database or both are not set
-			// Probably related to https://github.com/surrealdb/surrealdb.node/issues/26#issuecomment-2057102554
-			// Namespace: cfg.ns,
-			// Database:  cfg.db,
+			// We set only the namespace, so that we sign in as a namespace-level user,
+			// rather than a root-level or a database-level user.
+			Namespace: cfg.ns,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to sign in to SurrealDB: %w", err)
@@ -51,6 +46,31 @@ func (s *Server) connect(ctx context.Context, cfg config, schema string) (*surre
 	// respectively.
 	if err := db.Authenticate(ctx, token); err != nil {
 		return nil, fmt.Errorf("failed to authenticate with SurrealDB: %w", err)
+	}
+
+	return db, nil
+}
+
+// connectAndUse connects to SurrealDB and returns a DB instance
+//
+// It authenticates against the SurrealDB instance as a namespace-level user
+// with the SurrealDB namespace specified in cfg.ns (via ConfigurationForm),
+// and then switches to the specified database (schema) using USE.
+func (s *Server) connectAndUse(ctx context.Context, cfg config, schema string) (*surrealdb.DB, error) {
+	db, err := s.connect(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	// Note that we assume Fivetran `schema` is the same as SurrealDB `database`.
+	// So we treat SurrealDB `namespace` as a global setting, that limits every operation from this
+	// connector to SurrealDB within the namespace.
+	//
+	// If you read this connector's implementation,
+	// you'll notice Fivetran calls our RPCs like `hey, create a table named <schema>.<table>`,
+	// and we interpret it as `ok let's create a table <table> in database <schema>`.
+	if err := db.Use(ctx, cfg.ns, schema); err != nil {
+		return nil, fmt.Errorf("failed to use namespace %s: %w", cfg.ns, err)
 	}
 
 	return db, nil
