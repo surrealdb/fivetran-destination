@@ -11,10 +11,7 @@ import (
 )
 
 func (s *Server) defineTable(ctx context.Context, db *surrealdb.DB, table *pb.Table) error {
-	type TableData struct {
-		Table string `json:"table"`
-	}
-	var ver connection.RPCResponse[TableData]
+	var rpcRes connection.RPCResponse[any]
 	if err := validateTableName(table.Name); err != nil {
 		return err
 	}
@@ -24,7 +21,7 @@ func (s *Server) defineTable(ctx context.Context, db *surrealdb.DB, table *pb.Ta
 	// } else {
 	// 	query = fmt.Sprintf(`DEFINE TABLE IF NOT EXISTS %s SCHEMALESS;`, tb)
 	// }
-	if err := surrealdb.Send(ctx, db, &ver, "query", query); err != nil {
+	if err := surrealdb.Send(ctx, db, &rpcRes, "query", query); err != nil {
 		return err
 	}
 
@@ -53,7 +50,7 @@ func (s *Server) defineTable(ctx context.Context, db *surrealdb.DB, table *pb.Ta
 		if err != nil {
 			return err
 		}
-		if err := surrealdb.Send(ctx, db, &ver, "query", q); err != nil {
+		if err := surrealdb.Send(ctx, db, &rpcRes, "query", q); err != nil {
 			return err
 		}
 		if s.Debugging() {
@@ -66,7 +63,7 @@ func (s *Server) defineTable(ctx context.Context, db *surrealdb.DB, table *pb.Ta
 		if err != nil {
 			return err
 		}
-		if err := surrealdb.Send(ctx, db, &ver, "query", q); err != nil {
+		if err := surrealdb.Send(ctx, db, &rpcRes, "query", q); err != nil {
 			return err
 		}
 		if s.Debugging() {
@@ -77,7 +74,7 @@ func (s *Server) defineTable(ctx context.Context, db *surrealdb.DB, table *pb.Ta
 		if err != nil {
 			return err
 		}
-		if err := surrealdb.Send(ctx, db, &ver, "query", q); err != nil {
+		if err := surrealdb.Send(ctx, db, &rpcRes, "query", q); err != nil {
 			return err
 		}
 		if s.Debugging() {
