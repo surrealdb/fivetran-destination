@@ -4,14 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
-	"github.com/surrealdb/surrealdb.go"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
 	_ "google.golang.org/grpc/encoding/gzip"
 )
 
@@ -383,29 +380,6 @@ func (s *Server) WriteBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb
 
 func (s *Server) WriteHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatchRequest) (*pb.WriteBatchResponse, error) {
 	return s.writeHistoryBatch(ctx, req)
-}
-
-func (s *Server) upsertMerge(ctx context.Context, db *surrealdb.DB, thing models.RecordID, vars map[string]interface{}) (*[]surrealdb.QueryResult[any], error) {
-	var content string
-	for k := range vars {
-		content += fmt.Sprintf("%s: $%s, ", k, k)
-	}
-	content = strings.TrimSuffix(content, ", ")
-
-	varsWithTB := map[string]interface{}{
-		"tb": thing.Table,
-		"id": thing,
-	}
-	for k, v := range vars {
-		varsWithTB[k] = v
-	}
-
-	res, err := surrealdb.Query[any](ctx, db, `UPSERT type::thing($tb, $id) MERGE {`+content+`};`, varsWithTB)
-	if err != nil {
-		return nil, fmt.Errorf("unable to upsert merge record %s: %w", thing, err)
-	}
-
-	return res, nil
 }
 
 func (s *Server) Migrate(ctx context.Context, req *pb.MigrateRequest) (*pb.MigrateResponse, error) {
