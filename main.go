@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -11,8 +10,6 @@ import (
 	"os"
 
 	"github.com/surrealdb/fivetran-destination/internal/connector"
-	pb "github.com/surrealdb/fivetran-destination/internal/pb"
-	"google.golang.org/grpc"
 	_ "google.golang.org/grpc/encoding/gzip" // Register the gzip compressor
 )
 
@@ -55,21 +52,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create a new gRPC server with increased message size limits
-	s := grpc.NewServer(
-		grpc.MaxRecvMsgSize(1024*1024*50), // 50MB
-		grpc.MaxSendMsgSize(1024*1024*50), // 50MB
-	)
-	srv := connector.NewServer(logger)
-
-	// Start server components (metrics collector, etc.)
-	ctx := context.Background()
-	srv.Start(ctx)
-
-	pb.RegisterDestinationConnectorServer(s, srv)
-
 	logger.Info().Int("port", *port).Msg("Starting SurrealDB destination connector")
-	if err := s.Serve(lis); err != nil {
+	if err := connector.Serve(lis, logger); err != nil {
 		logger.Error().Err(err).Msg("failed to serve")
 	}
 }
