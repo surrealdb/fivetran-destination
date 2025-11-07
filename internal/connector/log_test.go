@@ -10,17 +10,18 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/surrealdb/fivetran-destination/internal/connector/log"
+	"github.com/surrealdb/fivetran-destination/internal/connector/server"
 )
 
 type testServer struct {
-	Server
+	server.Server
 	buf *bytes.Buffer
 }
 
 func newTestServer(level zerolog.Level) *testServer {
 	buf := &bytes.Buffer{}
 	return &testServer{
-		Server: Server{
+		Server: server.Server{
 			Logging: &log.Logging{
 				Logger: log.InitLogger(buf, level),
 			},

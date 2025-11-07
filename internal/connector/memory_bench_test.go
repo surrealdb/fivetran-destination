@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/surrealdb/fivetran-destination/internal/connector/server"
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
 )
 
@@ -14,7 +15,7 @@ func BenchmarkMemoryAllocation(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	server := NewServer(logger)
+	server := server.New(logger)
 	ctx := context.Background()
 
 	b.ResetTimer()
@@ -35,7 +36,7 @@ func BenchmarkSurrealDBOperations(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	server := NewServer(logger)
+	server := server.New(logger)
 	ctx := context.Background()
 	testConfig := getSurrealDBConfig()
 

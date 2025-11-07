@@ -7,6 +7,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
+	"github.com/surrealdb/fivetran-destination/internal/connector/server"
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
 	"github.com/surrealdb/surrealdb.go"
 )
@@ -34,7 +35,7 @@ func TestDescribeTable_all_data_types(t *testing.T) {
 	_, err = surrealdb.Query[any](t.Context(), sdb, "REMOVE TABLE IF EXISTS txn1;", nil)
 	require.NoError(t, err)
 
-	srv := NewServer(zerolog.New(os.Stdout).Level(zerolog.DebugLevel))
+	srv := server.New(zerolog.New(os.Stdout).Level(zerolog.DebugLevel))
 	created, err := srv.CreateTable(t.Context(), &pb.CreateTableRequest{
 		Configuration: map[string]string{
 			"url":  surrealdbEndpoint,
