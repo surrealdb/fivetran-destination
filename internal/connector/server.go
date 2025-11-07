@@ -453,34 +453,6 @@ func (s *Server) batchProcessEarliestStartFiles(ctx context.Context, db *surreal
 	})
 }
 
-func (s *Server) getPKColumnsAndValues(values map[string]string, table *pb.Table) ([]string, []any, error) {
-	var pkColumns []string
-	for _, c := range table.Columns {
-		if c.PrimaryKey {
-			pkColumns = append(pkColumns, c.Name)
-		}
-	}
-
-	// Note that we intentionally do not sort the primary key columns.
-	// We assume Fivetran in history mode sends us primary key columns containing the primary key in the source
-	// along with _fivetran_start.
-	// In that case, I want to use [id_from_src, _fivetran_start] as the primary key assumng
-	// Fivetran gives us columns definitions in this specific order.
-	// If we sorted it like the below, we might end up with [_fivetran_start, id_from_src] as the primary key.
-	// That's not wrong but I think it's not intuitive from users perspective.
-	//
-	// sort.Slice(pkColumns, func(i, j int) bool {
-	// 	return pkColumns[i] < pkColumns[j]
-	// })
-
-	var pkValues []any
-	for _, pkColumn := range pkColumns {
-		pkValues = append(pkValues, values[pkColumn])
-	}
-
-	return pkColumns, pkValues, nil
-}
-
 func (s *Server) upsertMerge(ctx context.Context, db *surrealdb.DB, thing models.RecordID, vars map[string]interface{}) (*[]surrealdb.QueryResult[any], error) {
 	var content string
 	for k := range vars {
