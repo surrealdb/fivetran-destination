@@ -76,6 +76,8 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 		s.LogDebug("Batch processing earliest start files")
 	}
 
+	// Implements https://github.com/fivetran/fivetran_partner_sdk/blob/main/how-to-handle-history-mode-batch-files.md#earliest_start_files
+	//
 	// See "EARLIEST START FILE" in https://github.com/fivetran/fivetran_partner_sdk/blob/main/history_mode.png
 	if err := s.handleEarliestStartFiles(ctx, db, fields, req); err != nil {
 		return &pb.WriteBatchResponse{
@@ -91,6 +93,8 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 		s.LogDebug("Batch processing replace files")
 	}
 
+	// Implements https://github.com/fivetran/fivetran_partner_sdk/blob/main/how-to-handle-history-mode-batch-files.md#replace_files
+	//
 	// We assume this corresponds to "UPSERT BATCH FILE" in https://github.com/fivetran/fivetran_partner_sdk/blob/main/history_mode.png
 	if err := s.handleReplaceFiles(ctx, db, fields, req.ReplaceFiles, req.FileParams, req.Keys, req.Table); err != nil {
 		return &pb.WriteBatchResponse{
@@ -106,6 +110,8 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 		s.LogDebug("Batch processing update files")
 	}
 
+	// Implements https://github.com/fivetran/fivetran_partner_sdk/blob/main/how-to-handle-history-mode-batch-files.md#update_files
+	//
 	// We assume this corresponds to "UPDATE BATCH FILE" in https://github.com/fivetran/fivetran_partner_sdk/blob/main/history_mode.png
 	if err := s.handleUpdateFiles(ctx, db, fields, req); err != nil {
 		return &pb.WriteBatchResponse{
@@ -121,6 +127,8 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 		s.LogDebug("Batch processing delete files")
 	}
 
+	// Implements https://github.com/fivetran/fivetran_partner_sdk/blob/main/how-to-handle-history-mode-batch-files.md#delete_files
+	//
 	// TODO We probably need to have handleDeleteFiles specifically for DeleteFiles
 	// Once that's done this will correspond to "DELETE BATCH FILE" in
 	// https://github.com/fivetran/fivetran_partner_sdk/blob/main/history_mode.png
