@@ -43,6 +43,23 @@ func (sv *SurrealValue) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			}
 		}
 
+		if f, ok := m["float32"]; ok {
+			switch v := f.(type) {
+			case float64:
+				sv.Value = float32(v)
+				return nil
+			case float32:
+				sv.Value = v
+				return nil
+			case int:
+				casted := float32(v)
+				sv.Value = casted
+				return nil
+			default:
+				return fmt.Errorf("invalid float type: %T", f)
+			}
+		}
+
 		if intlike, ok := m["uint64"]; ok {
 			switch v := intlike.(type) {
 			case int:

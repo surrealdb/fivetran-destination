@@ -13,10 +13,14 @@ tables:
         uint64: 1
       mylong:
         uint64: 1
-      # Both myfloat and mydouble are double precision floats because
-      # SurrealDB's `float` is a double precision float.
-      myfloat: 1.0
-      mydouble: 1.0
+      # Both myfloat and mydouble are double precision floats on SurrealDB
+      # because SurrealDB's `float` is a double precision float.
+      # However due to the restriction in db-validator
+      # we can only see float32 here for myfloat and mydouble.
+      myfloat:
+        float32: 1.0
+      mydouble:
+        float32: 1.0
       mydecimal:
         decimal: "1"
       mynaivedate:
