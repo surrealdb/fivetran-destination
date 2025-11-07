@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/surrealdb/fivetran-destination/internal/connector/server"
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
 )
 
@@ -68,7 +69,7 @@ func TestCombinedMemoryUsage(t *testing.T) {
 	logger, err := LoggerFromEnv()
 	assert.NoError(t, err)
 
-	server := NewServer(logger)
+	server := server.New(logger)
 	ctx := context.Background()
 	testConfig := getSurrealDBConfig()
 
@@ -105,7 +106,7 @@ func TestDescribeTableMemoryUsage(t *testing.T) {
 	logger, err := LoggerFromEnv()
 	assert.NoError(t, err)
 
-	server := NewServer(logger)
+	server := server.New(logger)
 	ctx := context.Background()
 	testConfig := getSurrealDBConfig()
 
@@ -128,7 +129,7 @@ func TestCreateTableMemoryUsage(t *testing.T) {
 	logger, err := LoggerFromEnv()
 	assert.NoError(t, err)
 
-	server := NewServer(logger)
+	server := server.New(logger)
 	ctx := context.Background()
 	testConfig := getSurrealDBConfig()
 	testTable := getTestTable()
@@ -153,7 +154,7 @@ func TestAlterTableMemoryUsage(t *testing.T) {
 	logger, err := LoggerFromEnv()
 	assert.NoError(t, err)
 
-	server := NewServer(logger)
+	server := server.New(logger)
 	ctx := context.Background()
 	testConfig := getSurrealDBConfig()
 	testTable := getTestTable()
@@ -178,7 +179,7 @@ func TestTruncateMemoryUsage(t *testing.T) {
 	logger, err := LoggerFromEnv()
 	assert.NoError(t, err)
 
-	server := NewServer(logger)
+	server := server.New(logger)
 	ctx := context.Background()
 	testConfig := getSurrealDBConfig()
 
@@ -218,7 +219,7 @@ func TestWriteBatchMemoryUsage(t *testing.T) {
 	logger, err := LoggerFromEnv()
 	assert.NoError(t, err)
 
-	server := NewServer(logger)
+	server := server.New(logger)
 	ctx := context.Background()
 	testConfig := getSurrealDBConfig()
 	testTable := getTestTable()
@@ -267,7 +268,7 @@ func TestWriteHistoryBatchMemoryUsage(t *testing.T) {
 	logger, err := LoggerFromEnv()
 	assert.NoError(t, err)
 
-	server := NewServer(logger)
+	server := server.New(logger)
 	ctx := context.Background()
 	testConfig := getSurrealDBConfig()
 	testTable := getTestTable()
@@ -325,7 +326,7 @@ func TestCapabilitiesMemoryUsage(t *testing.T) {
 	logger, err := LoggerFromEnv()
 	assert.NoError(t, err)
 
-	server := NewServer(logger)
+	server := server.New(logger)
 	ctx := context.Background()
 
 	m1, m2 := runMemoryTest(t, "Capabilities", 20, func(i int) error {
@@ -344,7 +345,7 @@ func TestTestMemoryUsage(t *testing.T) {
 	logger, err := LoggerFromEnv()
 	assert.NoError(t, err)
 
-	server := NewServer(logger)
+	server := server.New(logger)
 	ctx := context.Background()
 	testConfig := getSurrealDBConfig()
 

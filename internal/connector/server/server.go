@@ -1,4 +1,4 @@
-package connector
+package server
 
 import (
 	"context"
@@ -14,15 +14,7 @@ import (
 	_ "google.golang.org/grpc/encoding/gzip"
 )
 
-func LoggerFromEnv() (zerolog.Logger, error) {
-	level := zerolog.InfoLevel
-	if os.Getenv("SURREAL_FIVETRAN_DEBUG") != "" {
-		level = zerolog.DebugLevel
-	}
-	return log.InitLogger(nil, level), nil
-}
-
-func NewServer(logger zerolog.Logger) *Server {
+func New(logger zerolog.Logger) *Server {
 	logging := &log.Logging{
 		Logger: logger,
 	}
