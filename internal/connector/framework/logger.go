@@ -1,4 +1,4 @@
-package connector
+package framework
 
 type Logger interface {
 	Debugging() bool

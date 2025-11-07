@@ -1,4 +1,4 @@
-package connector
+package metrics
 
 import (
 	"context"
@@ -6,10 +6,12 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/surrealdb/fivetran-destination/internal/connector/framework"
 )
 
-// MetricsCollector collects performance metrics for the connector
-type MetricsCollector struct {
+// Collector collects performance metrics for the connector
+type Collector struct {
 	mu sync.RWMutex
 
 	// Record processing metrics
@@ -39,19 +41,19 @@ type MetricsCollector struct {
 	goroutineCount  int
 
 	// Configuration
-	logInterval time.Duration
-	logging     Logger
+	LogInterval time.Duration
+	logging     framework.Logger
 }
 
-// NewMetricsCollector creates a new metrics collector
-func NewMetricsCollector(logging Logger, logInterval time.Duration) *MetricsCollector {
+// NewCollector creates a new metrics collector
+func NewCollector(logging framework.Logger, logInterval time.Duration) *Collector {
 	if logInterval <= 0 {
 		logInterval = 30 * time.Second // default to 30 seconds
 	}
 
-	mc := &MetricsCollector{
+	mc := &Collector{
 		lastResetTime: time.Now(),
-		logInterval:   logInterval,
+		LogInterval:   logInterval,
 		logging:       logging,
 	}
 
@@ -59,52 +61,52 @@ func NewMetricsCollector(logging Logger, logInterval time.Duration) *MetricsColl
 }
 
 // Start begins periodic metrics logging
-func (mc *MetricsCollector) Start(ctx context.Context) {
+func (mc *Collector) Start(ctx context.Context) {
 	go mc.periodicLogger(ctx)
 	go mc.resourceMonitor(ctx)
 }
 
 // RecordProcessed increments the processed records counter
-func (mc *MetricsCollector) RecordProcessed(count int64, bytes int64) {
+func (mc *Collector) RecordProcessed(count int64, bytes int64) {
 	mc.recordsProcessed.Add(count)
 	mc.bytesProcessed.Add(bytes)
 }
 
 // FileProcessed increments the processed files counter
-func (mc *MetricsCollector) FileProcessed() {
+func (mc *Collector) FileProcessed() {
 	mc.filesProcessed.Add(1)
 }
 
 // FileProcessingStarted increments the current file processing counter
-func (mc *MetricsCollector) FileProcessingStarted() {
+func (mc *Collector) FileProcessingStarted() {
 	mc.currentFileProcessing.Add(1)
 	mc.totalFileProcessing.Add(1)
 }
 
 // FileProcessingCompleted decrements the current file processing counter
-func (mc *MetricsCollector) FileProcessingCompleted(duration time.Duration) {
+func (mc *Collector) FileProcessingCompleted(duration time.Duration) {
 	mc.currentFileProcessing.Add(-1)
 	mc.totalProcessTime.Add(duration.Nanoseconds())
 }
 
 // FileProcessingError increments the file processing error counter
-func (mc *MetricsCollector) FileProcessingError() {
+func (mc *Collector) FileProcessingError() {
 	mc.fileProcessingErrors.Add(1)
 }
 
 // DBWriteCompleted increments the database write counter
-func (mc *MetricsCollector) DBWriteCompleted(count int64) {
+func (mc *Collector) DBWriteCompleted(count int64) {
 	mc.dbWritesCompleted.Add(count)
 }
 
 // DBWriteError increments the database write error counter
-func (mc *MetricsCollector) DBWriteError() {
+func (mc *Collector) DBWriteError() {
 	mc.dbWriteErrors.Add(1)
 }
 
 // periodicLogger logs metrics at regular intervals
-func (mc *MetricsCollector) periodicLogger(ctx context.Context) {
-	ticker := time.NewTicker(mc.logInterval)
+func (mc *Collector) periodicLogger(ctx context.Context) {
+	ticker := time.NewTicker(mc.LogInterval)
 	defer ticker.Stop()
 
 	for {
@@ -118,7 +120,7 @@ func (mc *MetricsCollector) periodicLogger(ctx context.Context) {
 }
 
 // resourceMonitor updates resource usage metrics
-func (mc *MetricsCollector) resourceMonitor(ctx context.Context) {
+func (mc *Collector) resourceMonitor(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Second) // update every 5 seconds
 	defer ticker.Stop()
 
@@ -138,7 +140,7 @@ func (mc *MetricsCollector) resourceMonitor(ctx context.Context) {
 }
 
 // updateResourceMetrics updates CPU and memory usage metrics
-func (mc *MetricsCollector) updateResourceMetrics(lastStats *runtime.MemStats, lastTime time.Time) {
+func (mc *Collector) updateResourceMetrics(lastStats *runtime.MemStats, lastTime time.Time) {
 	var currentStats runtime.MemStats
 	runtime.ReadMemStats(&currentStats)
 
@@ -161,7 +163,7 @@ func (mc *MetricsCollector) updateResourceMetrics(lastStats *runtime.MemStats, l
 }
 
 // logMetrics logs the current metrics
-func (mc *MetricsCollector) logMetrics() {
+func (mc *Collector) logMetrics() {
 	elapsed := time.Since(mc.lastResetTime).Seconds()
 	if elapsed <= 0 {
 		return
