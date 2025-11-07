@@ -71,6 +71,16 @@ func (s *Server) ConfigurationForm(ctx context.Context, req *pb.ConfigurationFor
 	})
 
 	fields = append(fields, &pb.FormField{
+		Name:        "auth_level",
+		Label:       "Authentication Level",
+		Description: stringPtr("Select the authentication level to use when signing in to SurrealDB using user/pass. Leave blank if using token authentication."),
+		Required:    boolPtr(false),
+		Type: &pb.FormField_DropdownField{DropdownField: &pb.DropdownField{
+			DropdownField: []string{AuthLevelIDRoot, AuthLevelIDNamespace},
+		}},
+	})
+
+	fields = append(fields, &pb.FormField{
 		Name:        "user",
 		Label:       "User",
 		Placeholder: stringPtr("user"),

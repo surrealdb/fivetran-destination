@@ -26,16 +26,10 @@ func (s *Server) connect(ctx context.Context, cfg config) (*surrealdb.DB, error)
 	token := cfg.token
 
 	if token == "" {
-		token, err = db.SignIn(ctx, &surrealdb.Auth{
-			Username: cfg.user,
-			Password: cfg.pass,
-			// We set only the namespace, so that we sign in as a namespace-level user,
-			// rather than a root-level or a database-level user.
-			Namespace: cfg.ns,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to sign in to SurrealDB as a namespace-level user: %w", err)
+		if err := s.signIn(ctx, db, cfg); err != nil {
+			return nil, fmt.Errorf("failed to sign in to SurrealDB: %w", err)
 		}
+		return db, nil
 	}
 
 	// If you end up panicking here like `panic: cbor: 18 bytes of extraneous data starting at index 21`,
@@ -49,6 +43,33 @@ func (s *Server) connect(ctx context.Context, cfg config) (*surrealdb.DB, error)
 	}
 
 	return db, nil
+}
+
+func (s *Server) signIn(ctx context.Context, db *surrealdb.DB, cfg config) error {
+	auth := &surrealdb.Auth{
+		Username: cfg.user,
+		Password: cfg.pass,
+	}
+
+	var authLevelStr string
+	switch cfg.authLevel {
+	case AuthLevelRoot:
+		authLevelStr = "root"
+	case AuthLevelNamespace:
+		// We set only the namespace, so that we sign in as a namespace-level user,
+		// rather than a root-level or a database-level user.
+		auth.Namespace = cfg.ns
+
+		authLevelStr = "namespace"
+	default:
+		return fmt.Errorf("unknown auth level: %v", cfg.authLevel)
+	}
+
+	_, err := db.SignIn(ctx, auth)
+	if err != nil {
+		return fmt.Errorf("failed to sign in to SurrealDB as a %s-level user: %w", authLevelStr, err)
+	}
+	return nil
 }
 
 // connectAndUse connects to SurrealDB and returns a DB instance
