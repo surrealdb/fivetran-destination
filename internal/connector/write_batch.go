@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
 	"github.com/surrealdb/surrealdb.go"
@@ -206,6 +207,29 @@ func (s *Server) batchUpdate(ctx context.Context, db *surrealdb.DB, fields map[s
 
 		return nil
 	})
+}
+
+func (s *Server) upsertMerge(ctx context.Context, db *surrealdb.DB, thing models.RecordID, vars map[string]interface{}) (*[]surrealdb.QueryResult[any], error) {
+	var content string
+	for k := range vars {
+		content += fmt.Sprintf("%s: $%s, ", k, k)
+	}
+	content = strings.TrimSuffix(content, ", ")
+
+	varsWithTB := map[string]interface{}{
+		"tb": thing.Table,
+		"id": thing,
+	}
+	for k, v := range vars {
+		varsWithTB[k] = v
+	}
+
+	res, err := surrealdb.Query[any](ctx, db, `UPSERT type::thing($tb, $id) MERGE {`+content+`};`, varsWithTB)
+	if err != nil {
+		return nil, fmt.Errorf("unable to upsert merge record %s: %w", thing, err)
+	}
+
+	return res, nil
 }
 
 // Reads CSV files and deletes existing records accordingly.
