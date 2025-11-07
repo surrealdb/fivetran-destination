@@ -34,7 +34,7 @@ func (s *Server) connect(ctx context.Context, cfg config) (*surrealdb.DB, error)
 			Namespace: cfg.ns,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to sign in to SurrealDB: %w", err)
+			return nil, fmt.Errorf("failed to sign in to SurrealDB as a namespace-level user: %w", err)
 		}
 	}
 
