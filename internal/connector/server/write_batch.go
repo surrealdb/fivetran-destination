@@ -7,7 +7,6 @@ import (
 
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
 	"github.com/surrealdb/surrealdb.go"
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
@@ -244,15 +243,9 @@ func (s *Server) batchDelete(ctx context.Context, db *surrealdb.DB, fields map[s
 			values[column] = record[i]
 		}
 
-		thing := fmt.Sprintf("%s:%s", req.Table.Name, values["_fivetran_id"])
+		thing := models.NewRecordID(req.Table.Name, values["_fivetran_id"])
 
-		type DeleteResponse struct {
-			ID     int                    `json:"id"`
-			Result map[string]interface{} `json:"result"`
-		}
-		var res connection.RPCResponse[DeleteResponse]
-
-		err := surrealdb.Send(ctx, db, &res, "delete", thing)
+		_, err := surrealdb.Delete[any](ctx, db, thing)
 		if err != nil {
 			if s.metrics != nil {
 				s.metrics.DBWriteError()
@@ -266,7 +259,7 @@ func (s *Server) batchDelete(ctx context.Context, db *surrealdb.DB, fields map[s
 		}
 
 		if s.Debugging() {
-			s.LogDebug("Deleted record", "thing", thing, "result", res)
+			s.LogDebug("Deleted record", "thing", thing)
 		}
 
 		return nil
