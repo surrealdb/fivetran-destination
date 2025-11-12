@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
 	"github.com/surrealdb/surrealdb.go"
@@ -79,7 +80,7 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 	// Implements https://github.com/fivetran/fivetran_partner_sdk/blob/main/how-to-handle-history-mode-batch-files.md#earliest_start_files
 	//
 	// See "EARLIEST START FILE" in https://github.com/fivetran/fivetran_partner_sdk/blob/main/history_mode.png
-	if err := s.handleEarliestStartFiles(ctx, db, fields, req); err != nil {
+	if err := s.handleHistoryModeEarliestStartFiles(ctx, db, fields, req); err != nil {
 		return &pb.WriteBatchResponse{
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
@@ -96,7 +97,7 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 	// Implements https://github.com/fivetran/fivetran_partner_sdk/blob/main/how-to-handle-history-mode-batch-files.md#replace_files
 	//
 	// We assume this corresponds to "UPSERT BATCH FILE" in https://github.com/fivetran/fivetran_partner_sdk/blob/main/history_mode.png
-	if err := s.handleReplaceFiles(ctx, db, fields, req.ReplaceFiles, req.FileParams, req.Keys, req.Table); err != nil {
+	if err := s.handleHistoryModeReplaceFiles(ctx, db, fields, req.ReplaceFiles, req.FileParams, req.Keys, req.Table); err != nil {
 		return &pb.WriteBatchResponse{
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
@@ -113,7 +114,7 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 	// Implements https://github.com/fivetran/fivetran_partner_sdk/blob/main/how-to-handle-history-mode-batch-files.md#update_files
 	//
 	// We assume this corresponds to "UPDATE BATCH FILE" in https://github.com/fivetran/fivetran_partner_sdk/blob/main/history_mode.png
-	if err := s.handleUpdateFiles(ctx, db, fields, req); err != nil {
+	if err := s.handleHistoryModeUpdateFiles(ctx, db, fields, req); err != nil {
 		return &pb.WriteBatchResponse{
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
@@ -132,7 +133,7 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 	// TODO We probably need to have handleDeleteFiles specifically for DeleteFiles
 	// Once that's done this will correspond to "DELETE BATCH FILE" in
 	// https://github.com/fivetran/fivetran_partner_sdk/blob/main/history_mode.png
-	if err := s.handleReplaceFiles(ctx, db, fields, req.DeleteFiles, req.FileParams, req.Keys, req.Table); err != nil {
+	if err := s.handleHistoryModeDeleteFiles(ctx, db, fields, req); err != nil {
 		return &pb.WriteBatchResponse{
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
@@ -149,7 +150,7 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 	}, nil
 }
 
-func (s *Server) handleEarliestStartFiles(ctx context.Context, db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteHistoryBatchRequest) error {
+func (s *Server) handleHistoryModeEarliestStartFiles(ctx context.Context, db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteHistoryBatchRequest) error {
 	return s.processCSVRecords(req.EarliestStartFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
 		if s.Debugging() {
 			s.LogDebug("Processing earliest start file", "columns", columns, "record", record)
@@ -176,14 +177,14 @@ func (s *Server) handleEarliestStartFiles(ctx context.Context, db *surrealdb.DB,
 		for k, v := range values {
 			f, ok := fields[k]
 			if !ok {
-				return fmt.Errorf("column %s not found in the table info: %v", k, fields)
+				return fmt.Errorf("history mode earliest start file: column %s not found in the table info: %v", k, fields)
 			}
 
 			var typedV interface{}
 
 			typedV, err := f.strToSurrealType(v)
 			if err != nil {
-				return err
+				return fmt.Errorf("earliest start file: %w", err)
 			}
 
 			vars[k] = typedV
@@ -217,7 +218,168 @@ func (s *Server) handleEarliestStartFiles(ctx context.Context, db *surrealdb.DB,
 	})
 }
 
-func (s *Server) handleUpdateFiles(ctx context.Context, db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteHistoryBatchRequest) error {
+func (s *Server) generateIdArray(values map[string]string, table *pb.Table, fields map[string]columnInfo, fivetranStartDefault *time.Time) ([]any, error) {
+	_, vals, err := s.getPKColumnsAndValues(values, table)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get primary key columns and values for record %v: %w", values, err)
+	}
+
+	idArr := make([]any, len(vals)+1)
+	copy(idArr, vals)
+	// Append the _fivetran_start value to make the composite key
+	if fivetranStartDefault != nil {
+		idArr[len(vals)] = fivetranStartDefault
+	} else if v, ok := values["_fivetran_start"]; ok {
+		f, ok := fields["_fivetran_start"]
+		if !ok {
+			return nil, fmt.Errorf("generateIdArray: column %s not found in the table info: %v", "_fivetran_start", fields)
+		}
+
+		var typedV interface{}
+
+		typedV, err := f.strToSurrealType(v)
+		if err != nil {
+			s.LogDebug("generateIdArray: failed to convert _fivetran_start value", "values", values, "error", err)
+			return nil, fmt.Errorf("generateIdArray: %w", err)
+		}
+
+		idArr[len(vals)] = typedV
+	} else {
+		return nil, fmt.Errorf("_fivetran_start not found in the record: %v", values)
+	}
+
+	return idArr, nil
+}
+
+// Reads CSV files and replaces existing records accordingly.
+func (s *Server) handleHistoryModeReplaceFiles(ctx context.Context, db *surrealdb.DB, fields map[string]columnInfo, replaceFiles []string, fileParams *pb.FileParams, keys map[string][]byte, table *pb.Table) error {
+	unmodifiedString := fileParams.UnmodifiedString
+	return s.processCSVRecords(replaceFiles, fileParams, keys, func(columns []string, record []string) error {
+		if s.Debugging() {
+			s.LogDebug("Replacing record", "columns", columns, "record", record)
+		}
+
+		values := make(map[string]string)
+		for i, column := range columns {
+			values[column] = record[i]
+		}
+
+		idArr, err := s.generateIdArray(values, table, fields, nil)
+		if err != nil {
+			return fmt.Errorf("history mode replace file: %w", err)
+		}
+
+		thing := models.NewRecordID(table.Name, idArr)
+
+		vars := map[string]interface{}{}
+		for k, v := range values {
+			if unmodifiedString != "" && v == unmodifiedString {
+				if s.Debugging() {
+					s.LogDebug("Skipping unmodified column", "column", k, "value", v)
+				}
+				continue
+			}
+
+			if k == "id" {
+				if s.Debugging() {
+					s.LogDebug("Skipping id column")
+				}
+				continue
+			}
+
+			f, ok := fields[k]
+			if !ok {
+				return fmt.Errorf("replace file: column %s not found in the table info: %v", k, fields)
+			}
+
+			if v == fileParams.NullString {
+				vars[k] = models.None
+				continue
+			}
+
+			var typedV interface{}
+
+			typedV, err := f.strToSurrealType(v)
+			if err != nil {
+				return fmt.Errorf("replace file: %w", err)
+			}
+
+			vars[k] = typedV
+		}
+
+		res, err := surrealdb.Upsert[any](ctx, db, thing, vars)
+		if err != nil {
+			if s.metrics != nil {
+				s.metrics.DBWriteError()
+			}
+			s.LogDebug("Failed to upsert record for replace", "thing", thing, "vars", fmt.Sprintf("%+v", vars), "error", err)
+			return fmt.Errorf("unable to upsert record %s: %w", thing, err)
+		}
+
+		// Track successful DB write
+		if s.metrics != nil {
+			s.metrics.DBWriteCompleted(1)
+		}
+
+		if s.Debugging() {
+			s.LogDebug("Replaced record", "values", values, "thing", thing, "vars", fmt.Sprintf("%+v", vars), "result", fmt.Sprintf("%+v", *res))
+		}
+
+		return nil
+	})
+}
+
+func (s *Server) getLatestFivetranStartInStr(ctx context.Context, db *surrealdb.DB, table *pb.Table, values map[string]string, fields map[string]columnInfo) (*time.Time, error) {
+	var conds []string
+	vars := map[string]interface{}{
+		"tb": table.Name,
+	}
+
+	cols, vals, err := s.getPKColumnsAndValues(values, table)
+	if err != nil {
+		return nil, fmt.Errorf("latest fivetran_start: %w", err)
+	}
+
+	for i, col := range cols {
+		vars[col] = vals[i]
+		conds = append(conds, fmt.Sprintf("%s = $%s", col, col))
+	}
+
+	byID := strings.Join(conds, " AND ")
+
+	req, err := surrealdb.Query[[]map[string]interface{}](
+		ctx,
+		db,
+		fmt.Sprintf(
+			"SELECT _fivetran_start FROM type::table($tb) WHERE %s ORDER BY _fivetran_start DESC LIMIT 1;",
+			byID,
+		),
+		vars,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("unable to get latest _fivetran_start for %s where %s: %w", table.Name, byID, err)
+	}
+
+	if len(*req) == 0 {
+		return nil, fmt.Errorf("got empty query response while getting latest _fivetran_start for %s where %s", table.Name, byID)
+	}
+
+	if len((*req)[0].Result) == 0 {
+		s.LogDebug("Falling back to the zero time for latest _fivetran_start", "table", table.Name, "byID", byID)
+		zeroTime := time.Time{}
+		return &zeroTime, nil
+	}
+
+	latestFivetranStart, ok := (*req)[0].Result[0]["_fivetran_start"].(*time.Time)
+	if !ok {
+		return nil, fmt.Errorf("unable to assert latest _fivetran_start to string for %s where %s: %+v", table.Name, byID, (*req)[0].Result[0]["_fivetran_start"])
+	}
+
+	return latestFivetranStart, nil
+}
+
+func (s *Server) handleHistoryModeUpdateFiles(ctx context.Context, db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteHistoryBatchRequest) error {
 	return s.processCSVRecords(req.UpdateFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
 		if s.Debugging() {
 			s.LogDebug("Processing update file", "columns", columns, "record", record)
@@ -232,13 +394,9 @@ func (s *Server) handleUpdateFiles(ctx context.Context, db *surrealdb.DB, fields
 			s.LogDebug("batchHistoryUpdate record", "values", values)
 		}
 
-		var id any
-		if v, ok := values["_fivetran_id"]; ok {
-			id = v
-		} else if v, ok := values["id"]; ok {
-			id = v
-		} else {
-			return fmt.Errorf("id nor _fivetran_id not found in the record: %v", values)
+		id, err := s.generateIdArray(values, req.Table, fields, nil)
+		if err != nil {
+			return fmt.Errorf("history mode update file: %w", err)
 		}
 
 		thing := models.NewRecordID(req.Table.Name, id)
@@ -256,7 +414,7 @@ func (s *Server) handleUpdateFiles(ctx context.Context, db *surrealdb.DB, fields
 
 			f, ok := fields[k]
 			if !ok {
-				return fmt.Errorf("column %s not found in the table info: %v", k, fields)
+				return fmt.Errorf("history mode update file: column %s not found in the table info: %v", k, fields)
 			}
 
 			if v == req.FileParams.UnmodifiedString {
@@ -264,11 +422,19 @@ func (s *Server) handleUpdateFiles(ctx context.Context, db *surrealdb.DB, fields
 				continue
 			}
 
+			// Null strings like "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP"
+			// should result in SurrealDB none for the option<theType> SurrealDB
+			// field.
+			if v == req.FileParams.NullString {
+				vars[k] = models.None
+				continue
+			}
+
 			var typedV interface{}
 
 			typedV, err := f.strToSurrealType(v)
 			if err != nil {
-				return err
+				return fmt.Errorf("history mode update file: %w", err)
 			}
 
 			vars[k] = typedV
@@ -357,6 +523,7 @@ func (s *Server) upsertHistoryMode(ctx context.Context, db *surrealdb.DB, thing 
 
 	res, err := surrealdb.Upsert[any](ctx, db, thing, vars)
 	if err != nil {
+		s.LogDebug("Failed to upsert record for update", "thing", thing, "vars", fmt.Sprintf("%+v", vars), "error", err)
 		return fmt.Errorf("unable to upsert record %s: %w", thing, err)
 	}
 
@@ -365,4 +532,93 @@ func (s *Server) upsertHistoryMode(ctx context.Context, db *surrealdb.DB, thing 
 	}
 
 	return nil
+}
+
+func (s *Server) handleHistoryModeDeleteFiles(ctx context.Context, db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteHistoryBatchRequest) error {
+	return s.processCSVRecords(req.UpdateFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
+		if s.Debugging() {
+			s.LogDebug("Processing update file", "columns", columns, "record", record)
+		}
+
+		values := make(map[string]string)
+		for i, column := range columns {
+			values[column] = record[i]
+		}
+
+		// In case it is DELETE file, Fivetran does not provide _fivetran_start column/value.
+		// In that case, we need to be creative to get the lastest _fivetran_start for the record
+		// identified by the primary key columns.
+		// That way, we can update the (1) fivetran_end to the time specified in the file,
+		// and (2) fivetran_active to false for the latest record.
+		latestFivetranStart, err := s.getLatestFivetranStartInStr(ctx, db, req.Table, values, fields)
+		if err != nil {
+			return fmt.Errorf("unable to get latest _fivetran_start for record %v: %w", values, err)
+		}
+
+		if s.Debugging() {
+			s.LogDebug("History mode delete record", "values", values)
+		}
+
+		id, err := s.generateIdArray(values, req.Table, fields, latestFivetranStart)
+		if err != nil {
+			return fmt.Errorf("history mode delete file: %w", err)
+		}
+
+		vars := map[string]any{
+			"thing": models.NewRecordID(req.Table.Name, id),
+		}
+		for k, v := range values {
+			if k == "id" {
+				if s.Debugging() {
+					s.LogDebug("Skipping id")
+				}
+				continue
+			}
+
+			f, ok := fields[k]
+			if !ok {
+				return fmt.Errorf("history mode delete file: column %s not found in the table info: %v", k, fields)
+			}
+
+			if v == req.FileParams.UnmodifiedString {
+				continue
+			}
+
+			// Null strings like "null-m8yilkvPsNulehxl2G6pmSQ3G3WWdLP"
+			// should be handled as "missing" and "not neeeded to be updated"
+			// in DELETE files.
+			if v == req.FileParams.NullString {
+				continue
+			}
+
+			var typedV interface{}
+
+			typedV, err := f.strToSurrealType(v)
+			if err != nil {
+				return fmt.Errorf("history mode delete file: %w", err)
+			}
+
+			vars[k] = typedV
+		}
+
+		var conds []string
+		for k := range vars {
+			if k == "thing" {
+				continue
+			}
+			conds = append(conds, fmt.Sprintf("%s = $%s", k, k))
+		}
+
+		_, err = surrealdb.Query[[]map[string]any](
+			ctx,
+			db,
+			"UPSERT $thing SET "+strings.Join(conds, ", "),
+			vars,
+		)
+		if err != nil {
+			return fmt.Errorf("history mode delete file failed: %w", err)
+		}
+
+		return nil
+	})
 }

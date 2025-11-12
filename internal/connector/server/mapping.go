@@ -3,18 +3,22 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 // See https://surrealdb.com/docs/surrealql/datamodel#data-types for
 // available SurrealDB data types.
 type typeMapping struct {
-	sdb         string
-	ft          pb.DataType
-	surrealType func(string) (interface{}, error)
+	sdb string
+	ft  pb.DataType
+	// max decimal precision supported for this mapping
+	maxDecimalPrecision uint32
+	surrealType         func(string) (interface{}, error)
 }
 
 var typeMappings = []typeMapping{
@@ -75,8 +79,17 @@ var typeMappings = []typeMapping{
 		},
 	},
 	{
-		sdb: "decimal",
-		ft:  pb.DataType_DECIMAL,
+		sdb:                 "decimal",
+		ft:                  pb.DataType_DECIMAL,
+		maxDecimalPrecision: 28,
+		surrealType: func(v string) (interface{}, error) {
+			return models.DecimalString(v), nil
+		},
+	},
+	{
+		sdb:                 "float",
+		ft:                  pb.DataType_DECIMAL,
+		maxDecimalPrecision: math.MaxUint32,
 		surrealType: func(v string) (interface{}, error) {
 			return strconv.ParseFloat(v, 64)
 		},
@@ -92,7 +105,7 @@ var typeMappings = []typeMapping{
 		sdb: "datetime",
 		ft:  pb.DataType_NAIVE_DATETIME,
 		surrealType: func(v string) (interface{}, error) {
-			return time.Parse(time.RFC3339, v)
+			return time.Parse("2006-01-02T15:04:05", v)
 		},
 	},
 	{
@@ -121,33 +134,71 @@ var typeMappings = []typeMapping{
 		},
 	},
 	{
-		sdb: "datetime",
+		sdb: "duration",
 		ft:  pb.DataType_NAIVE_TIME,
 		surrealType: func(v string) (interface{}, error) {
-			return time.Parse(time.RFC3339, v)
+			ref, err := time.Parse(time.TimeOnly, "00:00:00")
+			if err != nil {
+				return nil, err
+			}
+			parsed, err := time.Parse(time.TimeOnly, v)
+			if err != nil {
+				return nil, err
+			}
+			return models.CustomDuration{Duration: parsed.Sub(ref)}, nil
 		},
 	},
+}
+
+func findTypeMappingByPbColumn(col *pb.Column) *typeMapping {
+	for _, m := range typeMappings {
+		if m.ft == col.Type {
+			if m.maxDecimalPrecision < pbColumnDecimalPrecision(col) {
+				continue
+			}
+			return &m
+		}
+	}
+	return nil
+}
+
+func findTypeMappingByColumnInfo(col *columnInfo) *typeMapping {
+	for _, m := range typeMappings {
+		if m.ft == col.FtType {
+			if m.maxDecimalPrecision < col.DecimalPrecision {
+				continue
+			}
+			return &m
+		}
+	}
+	return nil
+}
+
+func (s *Server) defineFieldQueryForHistoryModeIDFromFt(tb string, c *pb.Column, columnIndex int) (string, error) {
+	t := `DEFINE FIELD OVERWRITE %s on %s TYPE array<any> COMMENT '%s';`
+
+	meta := newColumnMeta(c, columnIndex)
+	metaJSON, err := json.Marshal(meta)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal column meta: %w", err)
+	}
+
+	defineField := fmt.Sprintf(t, c.Name, tb, string(metaJSON))
+
+	return defineField, nil
 }
 
 func (s *Server) defineFieldQueryFromFt(tb string, c *pb.Column, columnIndex int) (string, error) {
 	t := `DEFINE FIELD OVERWRITE %s on %s TYPE option<%s> COMMENT '%s';`
 
-	var sdb string
-	for _, m := range typeMappings {
-		if m.ft == c.Type {
-			sdb = m.sdb
-			break
-		}
+	tpe := findTypeMappingByPbColumn(c)
+	if tpe == nil {
+		return "", fmt.Errorf("defining field: unsupported data type: %s (name=%v, type=%v, params=%v)", c.Type, c.Name, c.Type, c.Params)
 	}
 
-	if sdb == "" {
-		return "", fmt.Errorf("unsupported data type: %s (name=%v, type=%v, params=%v)", c.Type, c.Name, c.Type, c.Params)
-	}
+	sdb := tpe.sdb
 
-	meta := ColumnMeta{
-		FtIndex: columnIndex,
-		FtType:  c.Type,
-	}
+	meta := newColumnMeta(c, columnIndex)
 	metaJSON, err := json.Marshal(meta)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal column meta: %w", err)
@@ -160,4 +211,23 @@ func (s *Server) defineFieldQueryFromFt(tb string, c *pb.Column, columnIndex int
 	}
 
 	return defineField, nil
+}
+
+func pbColumnDecimalPrecision(c *pb.Column) uint32 {
+	if c.Type != pb.DataType_DECIMAL {
+		return 0
+	}
+	params, ok := c.Params.Params.(*pb.DataTypeParams_Decimal)
+	if !ok {
+		return 0
+	}
+	return params.Decimal.Precision
+}
+
+func newColumnMeta(c *pb.Column, columnIndex int) ColumnMeta {
+	return ColumnMeta{
+		FtIndex:          columnIndex,
+		FtType:           c.Type,
+		DecimalPrecision: pbColumnDecimalPrecision(c),
+	}
 }
