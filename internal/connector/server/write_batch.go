@@ -158,7 +158,7 @@ func (s *Server) batchUpdate(ctx context.Context, db *surrealdb.DB, fields map[s
 
 			f, ok := fields[k]
 			if !ok {
-				return fmt.Errorf("column %s not found in the table info: %v", k, fields)
+				return fmt.Errorf("soft delete mode update file: column %s not found in the table info: %v", k, fields)
 			}
 
 			var typedV interface{}

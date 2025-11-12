@@ -52,7 +52,7 @@ func (s *Server) handleReplaceFiles(ctx context.Context, db *surrealdb.DB, field
 
 			f, ok := fields[k]
 			if !ok {
-				return fmt.Errorf("column %s not found in the table info: %v", k, fields)
+				return fmt.Errorf("soft delete mode replace file: column %s not found in the table info: %v", k, fields)
 			}
 
 			if v == fileParams.NullString {
@@ -75,6 +75,7 @@ func (s *Server) handleReplaceFiles(ctx context.Context, db *surrealdb.DB, field
 			if s.metrics != nil {
 				s.metrics.DBWriteError()
 			}
+			s.LogDebug("Failed to upsert record", "thing", thing, "vars", fmt.Sprintf("%+v", vars), "error", err)
 			return fmt.Errorf("unable to upsert record %s: %w", thing, err)
 		}
 

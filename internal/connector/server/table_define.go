@@ -27,20 +27,38 @@ func (s *Server) defineTable(ctx context.Context, db *surrealdb.DB, table *pb.Ta
 
 	s.LogInfo("Defined table", "table", tb, "query", query)
 
-	var historyMode bool
+	var (
+		historyMode bool
+	)
+
+	// We assume the table will be written using WriteHistoryBatch
+	// if the table has a _fivetran_start column.
+	for _, c := range table.Columns {
+		if c.Name == "_fivetran_start" {
+			historyMode = true
+			break
+		}
+	}
 
 	for i, c := range table.Columns {
 		if c.Name == "id" {
 			if s.Debugging() {
 				s.LogDebug("Skipping id")
 			}
+			// We treat it specially since it's the primary key column in SurrealDB,
+			// which needs to be the primary id type itself when soft-delete(non-history) mode,
+			// while in history mode it can be a composite key of (the id type assuming its pk, _fivetran_start).
+			q, err := s.defineFieldQueryForHistoryModeIDFromFt(tb, c, i)
+			if err != nil {
+				return err
+			}
+			if err := surrealdb.Send(ctx, db, &rpcRes, "query", q); err != nil {
+				return err
+			}
+			if s.Debugging() {
+				s.LogDebug("Defined field", "field", c.Name, "table", tb, "query", q)
+			}
 			continue
-		}
-
-		// We assume the table will be written using WriteHistoryBatch
-		// if the table has a _fivetran_start column.
-		if c.Name == "_fivetran_start" {
-			historyMode = true
 		}
 
 		if err := validateColumnName(c.Name); err != nil {

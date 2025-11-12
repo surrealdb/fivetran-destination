@@ -24,12 +24,11 @@ type columnInfo struct {
 }
 
 func (c *columnInfo) strToSurrealType(v string) (interface{}, error) {
-	for _, t := range typeMappings {
-		if t.ft == c.FtType {
-			return t.surrealType(v)
-		}
+	tpe := findTypeMappingByColumnInfo(c)
+	if tpe == nil {
+		return nil, fmt.Errorf("converting value: unsupported data type for column %s: surrealdb type %s, fivetran type %s", c.Name, c.SDBType, c.FtType)
 	}
-	return nil, fmt.Errorf("unsupported data type for column %s: surrealdb type %s, fivetran type %s", c.Name, c.SDBType, c.FtType)
+	return tpe.surrealType(v)
 }
 
 // ColumnMeta is the metadata for a field in a table.
@@ -43,6 +42,18 @@ type ColumnMeta struct {
 	// This is used to map the SurrealDB field to the correct data type in the Fivetran schema,
 	// even in case the type cannot be directly represented in the SurrealDB schema.
 	FtType pb.DataType `json:"ft_data_type"`
+
+	// DecimalPrecision is the precision for decimal types.
+	// It is only set when the FtType is pb.DataType_DECIMAL.
+	// This is used for deciding which SurrealDB type to use for the decimal column.
+	// SurrealDB's decimal is decimal128 powered by rust_decimal,
+	// whose max value is:
+	//   79_228_162_514_264_337_593_543_950_335
+	// which has 29 decimal digits.
+	// As any 29 decimal digits that presents larger value than that
+	// will be an error in SurrealDB side, we fall back to
+	// using float type in case the precision is larger than 28 (to be safe).
+	DecimalPrecision uint32 `json:"decimal_precision,omitempty"`
 }
 
 var ErrTableNotFound = fmt.Errorf("table not found")
@@ -139,7 +150,7 @@ func (s *Server) infoForTable(ctx context.Context, schemaName string, tableName 
 		}
 
 		columns = append(columns, columnInfo{
-			Name:       name,
+			Name:       strings.ReplaceAll(name, "`", ""),
 			SDBType:    tpe,
 			Optional:   optional,
 			ColumnMeta: meta,
