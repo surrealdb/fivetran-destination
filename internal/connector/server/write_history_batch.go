@@ -535,7 +535,7 @@ func (s *Server) upsertHistoryMode(ctx context.Context, db *surrealdb.DB, thing 
 }
 
 func (s *Server) handleHistoryModeDeleteFiles(ctx context.Context, db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteHistoryBatchRequest) error {
-	return s.processCSVRecords(req.UpdateFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
+	return s.processCSVRecords(req.DeleteFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
 		if s.Debugging() {
 			s.LogDebug("Processing update file", "columns", columns, "record", record)
 		}
