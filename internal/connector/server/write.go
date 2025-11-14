@@ -114,7 +114,11 @@ func (s *Server) getPKColumnsAndValues(values map[string]string, table *pb.Table
 
 	var pkValues []any
 	for _, pkColumn := range pkColumns {
-		pkValues = append(pkValues, values[pkColumn])
+		v, ok := values[pkColumn]
+		if !ok {
+			return nil, nil, fmt.Errorf("primary key column %s not found in record values: %v", pkColumn, values)
+		}
+		pkValues = append(pkValues, v)
 	}
 
 	return pkColumns, pkValues, nil
