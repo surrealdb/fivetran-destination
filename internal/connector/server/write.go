@@ -22,7 +22,7 @@ func (s *Server) handleReplaceFiles(ctx context.Context, db *surrealdb.DB, field
 			values[column] = record[i]
 		}
 
-		cols, vals, err := s.getPKColumnsAndValues(values, table)
+		cols, vals, err := s.getPKColumnsAndValues(values, table, fields)
 		if err != nil {
 			return fmt.Errorf("unable to get primary key columns and values for record %v: %w", values, err)
 		}
@@ -85,14 +85,14 @@ func (s *Server) handleReplaceFiles(ctx context.Context, db *surrealdb.DB, field
 		}
 
 		if s.Debugging() {
-			s.LogDebug("Replaced record", "values", values, "thing", thing, "vars", fmt.Sprintf("%+v", vars), "result", fmt.Sprintf("%+v", *res))
+			s.LogDebug("Replaced record", "commaSeparatedStringValues", values, "thing", thing, "vars", fmt.Sprintf("%+v", vars), "result", fmt.Sprintf("%+v", *res))
 		}
 
 		return nil
 	})
 }
 
-func (s *Server) getPKColumnsAndValues(values map[string]string, table *pb.Table) ([]string, []any, error) {
+func (s *Server) getPKColumnsAndValues(strValues map[string]string, table *pb.Table, fields map[string]columnInfo) ([]string, []any, error) {
 	var pkColumns []string
 	for _, c := range table.Columns {
 		if c.PrimaryKey {
@@ -114,11 +114,22 @@ func (s *Server) getPKColumnsAndValues(values map[string]string, table *pb.Table
 
 	var pkValues []any
 	for _, pkColumn := range pkColumns {
-		v, ok := values[pkColumn]
+		v, ok := strValues[pkColumn]
 		if !ok {
-			return nil, nil, fmt.Errorf("primary key column %s not found in record values: %v", pkColumn, values)
+			return nil, nil, fmt.Errorf("primary key column %s not found in record values: %v", pkColumn, strValues)
 		}
-		pkValues = append(pkValues, v)
+
+		f, ok := fields[pkColumn]
+		if !ok {
+			return nil, nil, fmt.Errorf("getPKColumnsAndValues: column %s not found in the table info: %v", pkColumn, fields)
+		}
+
+		typedV, err := f.strToSurrealType(v)
+		if err != nil {
+			return nil, nil, fmt.Errorf("getPKColumnsAndValues: %w", err)
+		}
+
+		pkValues = append(pkValues, typedV)
 	}
 
 	return pkColumns, pkValues, nil

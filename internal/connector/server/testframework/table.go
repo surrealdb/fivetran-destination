@@ -42,9 +42,18 @@ func NewTableDefinition(name string, columns map[string]pb.DataType, primaryKeys
 	}
 
 	// Create a set of primary key column names for quick lookup
-	pkSet := make(map[string]bool)
 	for _, pk := range primaryKeys {
-		pkSet[pk] = true
+		colType, ok := columns[pk]
+		if !ok {
+			panic(fmt.Sprintf("primary key column %s not found in columns map", pk))
+		}
+		delete(columns, pk)
+		col := &pb.Column{
+			Name:       pk,
+			Type:       colType,
+			PrimaryKey: true,
+		}
+		table.Columns = append(table.Columns, col)
 	}
 
 	// Add columns
@@ -52,7 +61,7 @@ func NewTableDefinition(name string, columns map[string]pb.DataType, primaryKeys
 		col := &pb.Column{
 			Name:       colName,
 			Type:       colType,
-			PrimaryKey: pkSet[colName],
+			PrimaryKey: false,
 		}
 		table.Columns = append(table.Columns, col)
 	}
