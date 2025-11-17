@@ -132,7 +132,7 @@ func (s *Server) batchUpdate(ctx context.Context, db *surrealdb.DB, fields map[s
 		//
 		// thing := fmt.Sprintf("%s:%s", req.Table.Name, values["_fivetran_id"])
 
-		cols, vals, err := s.getPKColumnsAndValues(values, req.Table)
+		cols, vals, err := s.getPKColumnsAndValues(values, req.Table, fields)
 		if err != nil {
 			return fmt.Errorf("unable to get primary key columns and values for record %v: %w", values, err)
 		}

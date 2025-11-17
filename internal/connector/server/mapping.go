@@ -98,21 +98,33 @@ var typeMappings = []typeMapping{
 		sdb: "datetime",
 		ft:  pb.DataType_NAIVE_DATE,
 		surrealType: func(v string) (interface{}, error) {
-			return time.Parse(time.DateOnly, v)
+			dt, err := time.Parse(time.DateOnly, v)
+			if err != nil {
+				return nil, err
+			}
+			return models.CustomDateTime{Time: dt}, nil
 		},
 	},
 	{
 		sdb: "datetime",
 		ft:  pb.DataType_NAIVE_DATETIME,
 		surrealType: func(v string) (interface{}, error) {
-			return time.Parse("2006-01-02T15:04:05", v)
+			dt, err := time.Parse("2006-01-02T15:04:05", v)
+			if err != nil {
+				return nil, err
+			}
+			return models.CustomDateTime{Time: dt}, nil
 		},
 	},
 	{
 		sdb: "datetime",
 		ft:  pb.DataType_UTC_DATETIME,
 		surrealType: func(v string) (interface{}, error) {
-			return time.Parse(time.RFC3339, v)
+			dt, err := time.Parse(time.RFC3339, v)
+			if err != nil {
+				return nil, err
+			}
+			return models.CustomDateTime{Time: dt}, nil
 		},
 	},
 	{
