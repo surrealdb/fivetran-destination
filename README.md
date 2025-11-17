@@ -13,10 +13,10 @@ The connector enables Fivetran to write data to SurrealDB tables. It implements 
 
 ## Architecture
 
-The connector implements the following gRPC services as defined in `destination_sdk.proto`:
+The connector implements the `DestinationConnector` gRPC service as defined in [destination_sdk.proto](./proto/destination_sdk.proto) and mainly does two things:
 
-1. `ConfigureService`: Handles connector configuration and validation
-2. `DestinationService`: Manages write operations to SurrealDB
+1. Handles connector configuration and validation
+2. Handles various write operations to the destination as required by Fivetran
 
 ## Configuration
 
@@ -33,13 +33,15 @@ The connector requires the following configuration:
 
 The configuration is exposed via the connector's ConfigurationForm API and should be provided by the end user.
 
-In near future, we will support token-based authentication, too.
+The connector uses SurrealDB namespace-scoped user/pass sign-in by default.
+
+Please refer to the [setup guide](docs/setup-guide.md) for how to get started with a namespace-level user.
 
 ## Development
 
 ### Prerequisites
 
-- Go 1.22 or later (toolchain go1.24.1 or later)
+- Go 1.25.3 or later
 - Protocol Buffers compiler (protoc)
 - SurrealDB instance for testing
 - Docker (for running conformance tests)
