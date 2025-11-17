@@ -15,7 +15,11 @@ func TruncateTable(t *testing.T, config map[string]string, namespace, database, 
 	ctx := t.Context()
 	db, err := ConnectAndUse(ctx, config["url"], namespace, database, config["user"], config["pass"])
 	require.NoError(t, err, "Failed to connect to database for truncate")
-	defer db.Close(ctx)
+	defer func() {
+		if err := db.Close(ctx); err != nil {
+			t.Logf("Failed to close database: %v", err)
+		}
+	}()
 
 	_, err = surrealdb.Query[any](ctx, db, fmt.Sprintf("DELETE FROM %s;", tableName), nil)
 	require.NoError(t, err, "Failed to truncate table")
@@ -26,7 +30,11 @@ func DropTable(t *testing.T, config map[string]string, namespace, database, tabl
 	ctx := t.Context()
 	db, err := ConnectAndUse(ctx, config["url"], namespace, database, config["user"], config["pass"])
 	require.NoError(t, err, "Failed to connect to database for drop")
-	defer db.Close(ctx)
+	defer func() {
+		if err := db.Close(ctx); err != nil {
+			t.Logf("Failed to close database: %v", err)
+		}
+	}()
 
 	_, err = surrealdb.Query[any](ctx, db, fmt.Sprintf("REMOVE TABLE IF EXISTS %s;", tableName), nil)
 	require.NoError(t, err, "Failed to drop table")

@@ -192,19 +192,18 @@ func (s *Server) handleHistoryModeEarliestStartFiles(ctx context.Context, db *su
 
 		vars["tb"] = req.Table.Name
 
-		var updateConds, delConds []string
+		var pkCondsExceptFtStart []string
 
 		for _, col := range cols {
-			updateConds = append(updateConds, fmt.Sprintf("%s = $%s", col, col))
 			if col == "_fivetran_start" {
 				// We don't want to include _fivetran_start in the equality conditions
 				// because we want to delete records whose _fivetran_start is greater than or equal to the given one.
 				continue
 			}
-			delConds = append(delConds, fmt.Sprintf("%s = $%s", col, col))
+			pkCondsExceptFtStart = append(pkCondsExceptFtStart, fmt.Sprintf("%s = $%s", col, col))
 		}
 
-		byPksExceptFtStart := strings.Join(delConds, " AND ")
+		byPksExceptFtStart := strings.Join(pkCondsExceptFtStart, " AND ")
 		res, err := surrealdb.Query[any](
 			ctx,
 			db,

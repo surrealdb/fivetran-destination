@@ -99,13 +99,19 @@ func ConnectAndUse(ctx context.Context, endpoint, namespace, database, username,
 		Password: password,
 	})
 	if err != nil {
-		db.Close(ctx)
+		if closeErr := db.Close(ctx); closeErr != nil {
+			// Log the error but do not override the original error
+			fmt.Printf("failed to close SurrealDB connection: %v\n", closeErr)
+		}
 		return nil, fmt.Errorf("failed to sign in: %w", err)
 	}
 
 	err = db.Use(ctx, namespace, database)
 	if err != nil {
-		db.Close(ctx)
+		if closeErr := db.Close(ctx); closeErr != nil {
+			// Log the error but do not override the original error
+			fmt.Printf("failed to close SurrealDB connection: %v\n", closeErr)
+		}
 		return nil, fmt.Errorf("failed to use namespace/database: %w", err)
 	}
 

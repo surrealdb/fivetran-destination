@@ -13,7 +13,11 @@ func QueryTable(t *testing.T, config map[string]string, namespace, database, tab
 	ctx := t.Context()
 	db, err := ConnectAndUse(ctx, config["url"], namespace, database, config["user"], config["pass"])
 	require.NoError(t, err, "Failed to connect to database for query")
-	defer db.Close(ctx)
+	defer func() {
+		if err := db.Close(ctx); err != nil {
+			t.Logf("Failed to close database: %v", err)
+		}
+	}()
 
 	result, err := surrealdb.Query[[]map[string]interface{}](ctx, db,
 		fmt.Sprintf("SELECT * FROM %s;", tableName),
