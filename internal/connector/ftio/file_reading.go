@@ -170,6 +170,9 @@ func (b *BlockReadCloser) readOn() error {
 
 		if b.remainingFileLen == 0 {
 			paddingLen := b.decryptionBuf[read-1]
+			if int(paddingLen) > read {
+				return fmt.Errorf("invalid PKCS7 padding: padding length %d exceeds data length %d (likely wrong decryption key)", paddingLen, read)
+			}
 			b.decryptionBuf = b.decryptionBuf[:read-int(paddingLen)]
 			b.bufLen = read - int(paddingLen)
 
