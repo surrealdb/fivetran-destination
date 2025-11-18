@@ -104,7 +104,9 @@ func (ts *TestServer) Stop(t *testing.T) {
 	}
 
 	if ts.Listener != nil {
-		ts.Listener.Close()
+		if err := ts.Listener.Close(); err != nil {
+			t.Logf("Failed to close listener: %v", err)
+		}
 	}
 
 	// Check if there was an error during server operation
@@ -133,7 +135,9 @@ func (ts *TestServer) NewClient(t *testing.T) pb.DestinationConnectorClient {
 
 	// Register cleanup to close connection
 	t.Cleanup(func() {
-		conn.Close()
+		if err := conn.Close(); err != nil {
+			t.Logf("Failed to close gRPC client connection: %v", err)
+		}
 	})
 
 	return pb.NewDestinationConnectorClient(conn)
@@ -169,7 +173,9 @@ func (ts *TestServer) WaitForReady(ctx context.Context, timeout time.Duration) e
 			// Try a simple RPC call
 			client := pb.NewDestinationConnectorClient(conn)
 			_, err = client.ConfigurationForm(ctx, &pb.ConfigurationFormRequest{})
-			conn.Close()
+			if err := conn.Close(); err != nil {
+				return fmt.Errorf("failed to close gRPC client connection: %w", err)
+			}
 
 			if err == nil {
 				return nil // Server is ready
