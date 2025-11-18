@@ -34,7 +34,7 @@ test-destination:
 
 lint:
 	@echo "Running golangci-lint..."
-	@docker run --rm -v $(PWD):/app -w /app golangci/golangci-lint:v2.1.1 golangci-lint run --timeout=5m
+	@docker run --rm -v $(PWD):/app -w /app golangci/golangci-lint:latest golangci-lint run --timeout=5m
 
 fmt:
 	@echo "Formatting Go code..."
