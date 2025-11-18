@@ -17,7 +17,7 @@ echo "  WORKING_DIR: $CONNECTOR_WORKING_DIR"
 echo "  GRPC_HOSTNAME: $GRPC_HOSTNAME"
 
 docker run --mount type=bind,source="$WORKING_DIR",target="/data" \
-      -a STDIN -a STDOUT -a STDERR -it \
+      -a STDIN -a STDOUT -a STDERR \
       -e WORKING_DIR="$WORKING_DIR" \
       -e GRPC_HOSTNAME=$GRPC_HOSTNAME \
       --add-host=host.docker.internal:host-gateway \

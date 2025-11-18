@@ -487,7 +487,10 @@ func (s *Server) getLatestFivetranStartInStr(ctx context.Context, db *surrealdb.
 	}
 
 	if len((*req)[0].Result) == 0 {
-		return nil, fmt.Errorf("got empty result while getting latest _fivetran_start for %s where %s", table.Name, byID)
+		// This means there is no previous record to be deleted with the given primary key values.
+		// So we return nil to indicate that.
+		// The caller should handle this case appropriately, like skipping with some logging.
+		return nil, nil
 	}
 
 	ftStart := (*req)[0].Result[0]["_fivetran_start"]
@@ -625,6 +628,14 @@ func (s *Server) handleHistoryModeUpdateFiles(ctx context.Context, db *surrealdb
 			return fmt.Errorf("unable to get previous values for record %s: %w", thing, err)
 		}
 
+		if len(previousPKValues) == 0 {
+			// No previous record found, nothing to do.
+			// See https://github.com/fivetran/fivetran_partner_sdk/pull/149
+
+			s.LogDebug("No previous record found for update, skipping", "record", thing)
+			return nil
+		}
+
 		for k, v := range previousFieldsAndValues {
 			vars[k] = v
 		}
@@ -666,10 +677,20 @@ func (s *Server) getPreviousValues(ctx context.Context, db *surrealdb.DB, fields
 
 	for _, col := range pkColumns {
 		if col == "_fivetran_start" {
-			// As we want the latest active record, we do not include _fivetran_start in the WHERE clause.
+			// We exclude _fivetran_start from the WHERE clause
+			// because we want to get the latest record by _fivetran_start
 			continue
 		}
-		conds = append(conds, fmt.Sprintf("%s = $%s", col, col))
+		f := col
+		if f == "id" {
+			// Special case for SurrealDB's fixed "id" field whose type is
+			// record id, which is a pair of table name and the primary key value(s).
+			// We need to use "id.id" to access the actual primary key value.
+			// Otherwise, WHERE id = $id would compare the record id with the primary key value,
+			// which would never be equal.
+			f = "id.id"
+		}
+		conds = append(conds, fmt.Sprintf("%s = $%s", f, col))
 	}
 
 	byID := strings.Join(conds, " AND ")
@@ -688,7 +709,23 @@ func (s *Server) getPreviousValues(ctx context.Context, db *surrealdb.DB, fields
 	}
 
 	query := fmt.Sprintf(
-		"SELECT type::fields($fields) FROM type::table($tb) WHERE %s AND _fivetran_active = true;",
+		// We once included `AND _fivetran_active = true`
+		// assuming there is only one active record at a time when Fivetran sends us an update.
+		//
+		// However, Fivetran may have one earliest start followed by an update both having the same timestamp T,
+		// which results in the former sets _fivetran_active=false for the record with timestamp less than or equal to T.
+		// If we had `AND _fivetran_active = true` in the query,
+		// the update with timestamp T would not find any active record,
+		// resulting in failure to get previous values for the unmodified fields.
+		//
+		// So we removed `AND _fivetran_active = true` from the query.
+
+		/// Also note that we include _fivetran_start in the selected fields
+		// because that's needed to use _fivetran_start in order-by clause
+		// I.e. it cannot find that _fivetran_start is included in $fields at query parsing time,
+		// resulting in an error.
+		// We explicitly (re)add _fivetran_start in the selected fields to prevent that.
+		"SELECT type::fields($fields), _fivetran_start FROM type::table($tb) WHERE %s ORDER BY _fivetran_start DESC;",
 		byID,
 	)
 
@@ -731,6 +768,9 @@ func (s *Server) getPreviousValues(ctx context.Context, db *surrealdb.DB, fields
 		return nil, nil, nil
 	}
 
+	// We assume Fivetran would pair an update with an earliest start so that
+	// there should be only one previous record found.
+	// If multiple records are found, we return an error as unexpected.
 	if len((*req)[0].Result) > 1 {
 		return nil, nil, fmt.Errorf("got multiple results while getting previous values found for %s where %s: %+v", table.Name, byID, (*req)[0].Result)
 	}
@@ -816,6 +856,13 @@ func (s *Server) handleHistoryModeDeleteFiles(ctx context.Context, db *surrealdb
 		latestFivetranStart, err := s.getLatestFivetranStartInStr(ctx, db, req.Table, values, fields)
 		if err != nil {
 			return fmt.Errorf("unable to get latest _fivetran_start for record %v: %w", values, err)
+		}
+
+		if latestFivetranStart == nil {
+			// No previous record found, nothing to do.
+			// See https://github.com/fivetran/fivetran_partner_sdk/pull/148
+			s.LogDebug("No existing records found for delete, skipping", "values", values)
+			return nil
 		}
 
 		if s.Debugging() {
