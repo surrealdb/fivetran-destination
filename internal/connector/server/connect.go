@@ -96,3 +96,17 @@ func (s *Server) connectAndUse(ctx context.Context, cfg config, schema string) (
 
 	return db, nil
 }
+
+func (s *Server) parseConfigAndConnect(ctx context.Context, configuration map[string]string, schema string) (*surrealdb.DB, error) {
+	cfg, err := s.parseConfig(configuration)
+	if err != nil {
+		return nil, err
+	}
+
+	db, err := s.connectAndUse(ctx, cfg, schema)
+	if err != nil {
+		return nil, err
+	}
+
+	return db, nil
+}
