@@ -1,12 +1,13 @@
-package server
+package tablemapper
 
 import (
 	"fmt"
 	"unicode"
 )
 
+// ValidateColumnName validates that a column name contains only allowed characters.
 // The only allowed characters are alphanumeric and underscores.
-func validateColumnName(name string) error {
+func ValidateColumnName(name string) error {
 	if name == "" {
 		return fmt.Errorf("column name is required")
 	}
@@ -18,8 +19,9 @@ func validateColumnName(name string) error {
 	return nil
 }
 
+// ValidateTableName validates that a table name contains only allowed characters.
 // The only allowed characters are alphanumeric and underscores.
-func validateTableName(name string) error {
+func ValidateTableName(name string) error {
 	if name == "" {
 		return fmt.Errorf("table name is required")
 	}

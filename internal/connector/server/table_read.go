@@ -2,71 +2,23 @@ package server
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"sort"
-	"strings"
 
+	"github.com/surrealdb/fivetran-destination/internal/connector/tablemapper"
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
-	"github.com/surrealdb/surrealdb.go"
 )
 
-type tableInfo struct {
-	columns []columnInfo
-}
+// ErrTableNotFound is returned when a table is not found.
+var ErrTableNotFound = tablemapper.ErrTableNotFound
 
-type columnInfo struct {
-	Name       string
-	SDBType    string
-	PrimaryKey bool
-	Optional   bool
-	ColumnMeta
-}
-
-func (c *columnInfo) strToSurrealType(v string) (interface{}, error) {
-	tpe := findTypeMappingByColumnInfo(c)
-	if tpe == nil {
-		return nil, fmt.Errorf("converting value: unsupported data type for column %s: surrealdb type %s, fivetran type %s", c.Name, c.SDBType, c.FtType)
-	}
-	return tpe.surrealType(v)
-}
-
-// ColumnMeta is the metadata for a field in a table.
-// It is used to store information like the Fivetran column index and type,
-// that can not be represented directly in the SurrealDB schema.
-type ColumnMeta struct {
-	// The column index in the Fivetran schema.
-	// This is used to map the SurrealDB field to the correct index in the Fivetran schema.
-	FtIndex int `json:"ft_index"`
-	// The data type of the column in the Fivetran schema.
-	// This is used to map the SurrealDB field to the correct data type in the Fivetran schema,
-	// even in case the type cannot be directly represented in the SurrealDB schema.
-	FtType pb.DataType `json:"ft_data_type"`
-
-	// DecimalPrecision is the precision for decimal types.
-	// It is only set when the FtType is pb.DataType_DECIMAL.
-	// This is used for deciding which SurrealDB type to use for the decimal column.
-	// SurrealDB's decimal is decimal128 powered by rust_decimal,
-	// whose max value is:
-	//   79_228_162_514_264_337_593_543_950_335
-	// which has 29 decimal digits.
-	// As any 29 decimal digits that presents larger value than that
-	// will be an error in SurrealDB side, we fall back to
-	// using float type in case the precision is larger than 28 (to be safe).
-	DecimalPrecision uint32 `json:"decimal_precision,omitempty"`
-}
-
-var ErrTableNotFound = fmt.Errorf("table not found")
-
-func (s *Server) infoForTable(ctx context.Context, schemaName string, tableName string, configuration map[string]string) (tableInfo, error) {
+func (s *Server) infoForTable(ctx context.Context, schemaName string, tableName string, configuration map[string]string) (tablemapper.TableInfo, error) {
 	cfg, err := s.parseConfig(configuration)
 	if err != nil {
-		return tableInfo{}, fmt.Errorf("failed parsing info for table config: %v", err.Error())
+		return tablemapper.TableInfo{}, err
 	}
 
 	db, err := s.connectAndUse(ctx, cfg, schemaName)
 	if err != nil {
-		return tableInfo{}, err
+		return tablemapper.TableInfo{}, err
 	}
 	defer func() {
 		if err := db.Close(ctx); err != nil {
@@ -74,117 +26,10 @@ func (s *Server) infoForTable(ctx context.Context, schemaName string, tableName 
 		}
 	}()
 
-	// the result is formatted like:
-	// {
-	// 	"events": {},
-	// 	"fields": {
-	// 		"name": "DEFINE FIELD name ON user TYPE string PERMISSIONS FULL"
-	// 	},
-	// 	"indexes": {},
-	// 	"lives": {},
-	// 	"tables": {}
-	// }
-	type InfoForTableResult struct {
-		Fields map[string]string `json:"fields"`
-	}
-
-	if err := validateTableName(tableName); err != nil {
-		return tableInfo{}, err
-	}
-
-	query := fmt.Sprintf(`INFO FOR TABLE %s;`, tableName)
-
-	info, err := surrealdb.Query[InfoForTableResult](ctx, db, query, nil)
-	if err != nil {
-		return tableInfo{}, err
-	}
-
-	if len(*info) == 0 {
-		return tableInfo{}, ErrTableNotFound
-	}
-
-	first := (*info)[0]
-
-	fields := first.Result.Fields
-
-	if s.Debugging() {
-		s.LogDebug("INFO FOR TABLE", "table", tableName, "fields", fields)
-	}
-
-	columns := []columnInfo{}
-
-	for _, field := range fields {
-		field = strings.TrimPrefix(field, "DEFINE FIELD ")
-		s := strings.Split(field, " ")
-		name := s[0]
-		rr := strings.Split(field, " TYPE ")
-		tpe := strings.Split(rr[1], " ")[0]
-
-		var meta ColumnMeta
-		if strings.Contains(field, "COMMENT '") {
-			comment := strings.Split(field, "COMMENT '")[1]
-			comment = strings.Split(comment, "'")[0]
-			err := json.Unmarshal([]byte(comment), &meta)
-			if err != nil {
-				return tableInfo{}, fmt.Errorf("failed to unmarshal comment %s for field %s: %v", comment, name, err)
-			}
-		}
-
-		// `DEFINE FIELD upper.* ON table TYPE any;`
-		// ends up with a field name like `upper[*]`
-		// upper[*] are for any nested fields in the `upper` object field
-		// and does not need to be mapped to a Fivetran column.
-		// What's why we skip them here.
-		if strings.HasSuffix(name, "[*]") {
-			if tpe != "any" {
-				return tableInfo{}, fmt.Errorf("unexpected type for field %s: %s", name, tpe)
-			}
-			continue
-		}
-
-		var optional bool
-		if strings.HasPrefix(tpe, "option<") {
-			tpe = strings.TrimPrefix(tpe, "option<")
-			tpe = strings.TrimSuffix(tpe, ">")
-			optional = true
-		}
-
-		columns = append(columns, columnInfo{
-			Name:       strings.ReplaceAll(name, "`", ""),
-			SDBType:    tpe,
-			Optional:   optional,
-			ColumnMeta: meta,
-		})
-	}
-
-	// columns = append(columns, columnInfo{
-	// 	Name:       "id",
-	// 	Type:       "string",
-	// 	PrimaryKey: true,
-	// })
-
-	if s.Debugging() {
-		s.LogDebug("Ran info for table", "table", tableName, "columns", columns)
-	}
-
-	sort.Slice(columns, func(i, j int) bool {
-		return columns[i].FtIndex < columns[j].FtIndex
-	})
-
-	return tableInfo{
-		columns: columns,
-	}, nil
+	tm := tablemapper.New(db, s.Logging)
+	return tm.InfoForTable(ctx, tableName)
 }
 
-func (s *Server) columnsFromSurrealToFivetran(sColumns []columnInfo) ([]*pb.Column, error) {
-	var ftColumns []*pb.Column
-
-	for _, c := range sColumns {
-		ftColumns = append(ftColumns, &pb.Column{
-			Name: c.Name,
-			Type: c.FtType,
-		})
-	}
-
-	return ftColumns, nil
+func (s *Server) columnsFromSurrealToFivetran(sColumns []tablemapper.ColumnInfo) ([]*pb.Column, error) {
+	return tablemapper.ColumnsFromSurrealToFivetran(sColumns)
 }

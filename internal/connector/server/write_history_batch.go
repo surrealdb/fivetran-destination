@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/surrealdb/fivetran-destination/internal/connector/tablemapper"
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
 	"github.com/surrealdb/surrealdb.go"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
@@ -68,8 +69,8 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 		}, err
 	}
 
-	fields := make(map[string]columnInfo)
-	for _, column := range tb.columns {
+	fields := make(map[string]tablemapper.ColumnInfo)
+	for _, column := range tb.Columns {
 		fields[column.Name] = column
 	}
 
@@ -150,7 +151,7 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 	}, nil
 }
 
-func (s *Server) handleHistoryModeEarliestStartFiles(ctx context.Context, db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteHistoryBatchRequest) error {
+func (s *Server) handleHistoryModeEarliestStartFiles(ctx context.Context, db *surrealdb.DB, fields map[string]tablemapper.ColumnInfo, req *pb.WriteHistoryBatchRequest) error {
 	return s.processCSVRecords(req.EarliestStartFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
 		if s.Debugging() {
 			s.LogDebug("Processing earliest start file", "columns", columns, "record", record)
@@ -182,7 +183,7 @@ func (s *Server) handleHistoryModeEarliestStartFiles(ctx context.Context, db *su
 
 			var typedV interface{}
 
-			typedV, err := f.strToSurrealType(v)
+			typedV, err := f.StrToSurrealType(v)
 			if err != nil {
 				return fmt.Errorf("earliest start file: %w", err)
 			}
@@ -335,7 +336,7 @@ func (s *Server) getPKColumnsAndValuesTyped(values map[string]any, table *pb.Tab
 	return pkColumns, pkValues, nil
 }
 
-func (s *Server) generateIdArray(values map[string]string, table *pb.Table, fields map[string]columnInfo) ([]any, error) {
+func (s *Server) generateIdArray(values map[string]string, table *pb.Table, fields map[string]tablemapper.ColumnInfo) ([]any, error) {
 	_, vals, err := s.getPKColumnsAndValues(values, table, fields)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get primary key columns and values for record %v: %w", values, err)
@@ -344,7 +345,7 @@ func (s *Server) generateIdArray(values map[string]string, table *pb.Table, fiel
 	return vals, nil
 }
 
-func (s *Server) generateIdArrayForDelete(values map[string]string, table *pb.Table, fields map[string]columnInfo, fivetranStartDefault *models.CustomDateTime) ([]any, error) {
+func (s *Server) generateIdArrayForDelete(values map[string]string, table *pb.Table, fields map[string]tablemapper.ColumnInfo, fivetranStartDefault *models.CustomDateTime) ([]any, error) {
 	_, vals, err := s.getPKColumnsAndValuesForDelete(values, table, fields)
 	if err != nil {
 		return nil, fmt.Errorf("generateIdArrayForDelete: unable to get primary key columns and values for record %v: %w", values, err)
@@ -368,7 +369,7 @@ func (s *Server) generateIdArrayTyped(values map[string]any, table *pb.Table) (*
 }
 
 // Reads CSV files and replaces existing records accordingly.
-func (s *Server) handleHistoryModeReplaceFiles(ctx context.Context, db *surrealdb.DB, fields map[string]columnInfo, replaceFiles []string, fileParams *pb.FileParams, keys map[string][]byte, table *pb.Table) error {
+func (s *Server) handleHistoryModeReplaceFiles(ctx context.Context, db *surrealdb.DB, fields map[string]tablemapper.ColumnInfo, replaceFiles []string, fileParams *pb.FileParams, keys map[string][]byte, table *pb.Table) error {
 	unmodifiedString := fileParams.UnmodifiedString
 	return s.processCSVRecords(replaceFiles, fileParams, keys, func(columns []string, record []string) error {
 		if s.Debugging() {
@@ -415,7 +416,7 @@ func (s *Server) handleHistoryModeReplaceFiles(ctx context.Context, db *surreald
 
 			var typedV interface{}
 
-			typedV, err := f.strToSurrealType(v)
+			typedV, err := f.StrToSurrealType(v)
 			if err != nil {
 				return fmt.Errorf("replace file: %w", err)
 			}
@@ -445,7 +446,7 @@ func (s *Server) handleHistoryModeReplaceFiles(ctx context.Context, db *surreald
 	})
 }
 
-func (s *Server) getLatestFivetranStartInStr(ctx context.Context, db *surrealdb.DB, table *pb.Table, values map[string]string, fields map[string]columnInfo) (*models.CustomDateTime, error) {
+func (s *Server) getLatestFivetranStartInStr(ctx context.Context, db *surrealdb.DB, table *pb.Table, values map[string]string, fields map[string]tablemapper.ColumnInfo) (*models.CustomDateTime, error) {
 	var conds []string
 	vars := map[string]interface{}{
 		"tb": table.Name,
@@ -503,7 +504,7 @@ func (s *Server) getLatestFivetranStartInStr(ctx context.Context, db *surrealdb.
 	return &latestFivetranStart, nil
 }
 
-func (s *Server) getPKColumnsAndValuesForDelete(strValues map[string]string, table *pb.Table, fields map[string]columnInfo) ([]string, []any, error) {
+func (s *Server) getPKColumnsAndValuesForDelete(strValues map[string]string, table *pb.Table, fields map[string]tablemapper.ColumnInfo) ([]string, []any, error) {
 	var pkColumns []string
 	for _, c := range table.Columns {
 		if c.PrimaryKey && c.Name != "_fivetran_start" {
@@ -535,7 +536,7 @@ func (s *Server) getPKColumnsAndValuesForDelete(strValues map[string]string, tab
 			return nil, nil, fmt.Errorf("getPKColumnsAndValues: column %s not found in the table info: %v", pkColumn, fields)
 		}
 
-		typedV, err := f.strToSurrealType(v)
+		typedV, err := f.StrToSurrealType(v)
 		if err != nil {
 			return nil, nil, fmt.Errorf("getPKColumnsAndValues: %w", err)
 		}
@@ -546,7 +547,7 @@ func (s *Server) getPKColumnsAndValuesForDelete(strValues map[string]string, tab
 	return pkColumns, pkValues, nil
 }
 
-func (s *Server) handleHistoryModeUpdateFiles(ctx context.Context, db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteHistoryBatchRequest) error {
+func (s *Server) handleHistoryModeUpdateFiles(ctx context.Context, db *surrealdb.DB, fields map[string]tablemapper.ColumnInfo, req *pb.WriteHistoryBatchRequest) error {
 	return s.processCSVRecords(req.UpdateFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
 		if s.Debugging() {
 			s.LogDebug("Processing update file", "columns", columns, "record", record)
@@ -599,7 +600,7 @@ func (s *Server) handleHistoryModeUpdateFiles(ctx context.Context, db *surrealdb
 
 			var typedV interface{}
 
-			typedV, err := f.strToSurrealType(v)
+			typedV, err := f.StrToSurrealType(v)
 			if err != nil {
 				return fmt.Errorf("history mode update file: %w", err)
 			}
@@ -837,7 +838,7 @@ func (s *Server) upsertContentHistoryMode(ctx context.Context, db *surrealdb.DB,
 	return nil
 }
 
-func (s *Server) handleHistoryModeDeleteFiles(ctx context.Context, db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteHistoryBatchRequest) error {
+func (s *Server) handleHistoryModeDeleteFiles(ctx context.Context, db *surrealdb.DB, fields map[string]tablemapper.ColumnInfo, req *pb.WriteHistoryBatchRequest) error {
 	return s.processCSVRecords(req.DeleteFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
 		if s.Debugging() {
 			s.LogDebug("Processing delete file", "columns", columns, "record", record)
@@ -903,7 +904,7 @@ func (s *Server) handleHistoryModeDeleteFiles(ctx context.Context, db *surrealdb
 
 			var typedV interface{}
 
-			typedV, err := f.strToSurrealType(v)
+			typedV, err := f.StrToSurrealType(v)
 			if err != nil {
 				return fmt.Errorf("history mode delete file: %w", err)
 			}

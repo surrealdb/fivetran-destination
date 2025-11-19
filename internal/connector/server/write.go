@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/surrealdb/fivetran-destination/internal/connector/tablemapper"
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
 	"github.com/surrealdb/surrealdb.go"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 // Reads CSV files and replaces existing records accordingly.
-func (s *Server) handleReplaceFiles(ctx context.Context, db *surrealdb.DB, fields map[string]columnInfo, replaceFiles []string, fileParams *pb.FileParams, keys map[string][]byte, table *pb.Table) error {
+func (s *Server) handleReplaceFiles(ctx context.Context, db *surrealdb.DB, fields map[string]tablemapper.ColumnInfo, replaceFiles []string, fileParams *pb.FileParams, keys map[string][]byte, table *pb.Table) error {
 	unmodifiedString := fileParams.UnmodifiedString
 	return s.processCSVRecords(replaceFiles, fileParams, keys, func(columns []string, record []string) error {
 		if s.Debugging() {
@@ -62,7 +63,7 @@ func (s *Server) handleReplaceFiles(ctx context.Context, db *surrealdb.DB, field
 
 			var typedV interface{}
 
-			typedV, err := f.strToSurrealType(v)
+			typedV, err := f.StrToSurrealType(v)
 			if err != nil {
 				return err
 			}
@@ -92,7 +93,7 @@ func (s *Server) handleReplaceFiles(ctx context.Context, db *surrealdb.DB, field
 	})
 }
 
-func (s *Server) getPKColumnsAndValues(strValues map[string]string, table *pb.Table, fields map[string]columnInfo) ([]string, []any, error) {
+func (s *Server) getPKColumnsAndValues(strValues map[string]string, table *pb.Table, fields map[string]tablemapper.ColumnInfo) ([]string, []any, error) {
 	var pkColumns []string
 	for _, c := range table.Columns {
 		if c.PrimaryKey {
@@ -124,7 +125,7 @@ func (s *Server) getPKColumnsAndValues(strValues map[string]string, table *pb.Ta
 			return nil, nil, fmt.Errorf("getPKColumnsAndValues: column %s not found in the table info: %v", pkColumn, fields)
 		}
 
-		typedV, err := f.strToSurrealType(v)
+		typedV, err := f.StrToSurrealType(v)
 		if err != nil {
 			return nil, nil, fmt.Errorf("getPKColumnsAndValues: %w", err)
 		}

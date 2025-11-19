@@ -212,7 +212,7 @@ func (s *Server) DescribeTable(ctx context.Context, req *pb.DescribeTableRequest
 		s.LogDebug("infoForTable result", "table_info", tb)
 	}
 
-	ftColumns, err := s.columnsFromSurrealToFivetran(tb.columns)
+	ftColumns, err := s.columnsFromSurrealToFivetran(tb.Columns)
 	if err != nil {
 		return &pb.DescribeTableResponse{
 			// notfound, table, warning, task
