@@ -84,18 +84,18 @@ func (s *Server) migrateDrop(_ context.Context, m *migrator.Migrator, schema str
 	}
 }
 
-func (s *Server) migrateCopy(_ context.Context, m *migrator.Migrator, schema string, table string, copy *pb.CopyOperation) error {
+func (s *Server) migrateCopy(ctx context.Context, m *migrator.Migrator, schema string, table string, copy *pb.CopyOperation) error {
 	switch v := copy.Entity.(type) {
 	case *pb.CopyOperation_CopyColumn:
-		copy := v.CopyColumn
+		copyCol := v.CopyColumn
 		s.LogInfo("Copying column",
 			"schema", schema,
 			"table", table,
-			"from_column", copy.FromColumn,
-			"to_column", copy.ToColumn,
+			"from_column", copyCol.FromColumn,
+			"to_column", copyCol.ToColumn,
 		)
 
-		return errors.New("copy column is not implemented yet")
+		return m.CopyColumn(ctx, schema, table, copyCol.FromColumn, copyCol.ToColumn)
 	case *pb.CopyOperation_CopyTable:
 		copy := v.CopyTable
 		s.LogInfo("Copying table",
