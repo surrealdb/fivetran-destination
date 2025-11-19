@@ -107,16 +107,16 @@ func (s *Server) migrateCopy(ctx context.Context, m *migrator.Migrator, schema s
 
 		return errors.New("copy table is not implemented yet")
 	case *pb.CopyOperation_CopyTableToHistoryMode:
-		copy := v.CopyTableToHistoryMode
-		s.LogInfo("Copying table",
+		copyHist := v.CopyTableToHistoryMode
+		s.LogInfo("Copying table to history mode",
 			"schema", schema,
 			"table", table,
-			"from_table", copy.FromTable,
-			"to_table", copy.ToTable,
-			"soft_deleted_column", copy.SoftDeletedColumn,
+			"from_table", copyHist.FromTable,
+			"to_table", copyHist.ToTable,
+			"soft_deleted_column", copyHist.SoftDeletedColumn,
 		)
 
-		return errors.New("copy table to history mode is not implemented yet")
+		return m.CopyTableToHistoryMode(ctx, schema, table, copyHist.FromTable, copyHist.ToTable, copyHist.SoftDeletedColumn)
 	default:
 		return fmt.Errorf("unknown copy operation: %T", v)
 	}
