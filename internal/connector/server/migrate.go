@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/surrealdb/fivetran-destination/internal/connector/server/migrator"
@@ -56,7 +55,7 @@ func (s *Server) migrate(ctx context.Context, req *pb.MigrateRequest) error {
 	return nil
 }
 
-func (s *Server) migrateDrop(_ context.Context, m *migrator.Migrator, schema string, table string, drop *pb.DropOperation) error {
+func (s *Server) migrateDrop(ctx context.Context, m *migrator.Migrator, schema string, table string, drop *pb.DropOperation) error {
 	switch v := drop.Entity.(type) {
 	case *pb.DropOperation_DropTable:
 		s.LogInfo("Dropping table",
@@ -68,17 +67,17 @@ func (s *Server) migrateDrop(_ context.Context, m *migrator.Migrator, schema str
 			return fmt.Errorf("encountered drop table flag set to false")
 		}
 
-		return errors.New("drop table is not implemented yet")
+		return m.DropTable(ctx, schema, table)
 	case *pb.DropOperation_DropColumnInHistoryMode:
-		drop := v.DropColumnInHistoryMode
+		dropCol := v.DropColumnInHistoryMode
 		s.LogInfo("Dropping column in history mode",
 			"schema", schema,
 			"table", table,
-			"column", drop.Column,
-			"operation_timestamp", drop.OperationTimestamp,
+			"column", dropCol.Column,
+			"operation_timestamp", dropCol.OperationTimestamp,
 		)
 
-		return errors.New("drop column in history mode is not implemented yet")
+		return m.DropColumnInHistoryMode(ctx, schema, table, dropCol.Column, dropCol.OperationTimestamp)
 	default:
 		return fmt.Errorf("unknown drop operation: %T", v)
 	}
@@ -97,15 +96,15 @@ func (s *Server) migrateCopy(ctx context.Context, m *migrator.Migrator, schema s
 
 		return m.CopyColumn(ctx, schema, table, copyCol.FromColumn, copyCol.ToColumn)
 	case *pb.CopyOperation_CopyTable:
-		copy := v.CopyTable
+		copyTbl := v.CopyTable
 		s.LogInfo("Copying table",
 			"schema", schema,
 			"table", table,
-			"from_table", copy.FromTable,
-			"to_table", copy.ToTable,
+			"from_table", copyTbl.FromTable,
+			"to_table", copyTbl.ToTable,
 		)
 
-		return errors.New("copy table is not implemented yet")
+		return m.CopyTable(ctx, schema, table, copyTbl.FromTable, copyTbl.ToTable)
 	case *pb.CopyOperation_CopyTableToHistoryMode:
 		copyHist := v.CopyTableToHistoryMode
 		s.LogInfo("Copying table to history mode",
@@ -122,74 +121,74 @@ func (s *Server) migrateCopy(ctx context.Context, m *migrator.Migrator, schema s
 	}
 }
 
-func (s *Server) migrateRename(_ context.Context, m *migrator.Migrator, schema string, table string, rename *pb.RenameOperation) error {
+func (s *Server) migrateRename(ctx context.Context, m *migrator.Migrator, schema string, table string, rename *pb.RenameOperation) error {
 	switch v := rename.Entity.(type) {
 	case *pb.RenameOperation_RenameColumn:
-		rename := v.RenameColumn
+		renameCol := v.RenameColumn
 		s.LogInfo("Renaming column",
 			"schema", schema,
 			"table", table,
-			"from_column", rename.FromColumn,
-			"to_column", rename.ToColumn,
+			"from_column", renameCol.FromColumn,
+			"to_column", renameCol.ToColumn,
 		)
 
-		return errors.New("rename column is not implemented yet")
+		return m.RenameColumn(ctx, schema, table, renameCol.FromColumn, renameCol.ToColumn)
 	case *pb.RenameOperation_RenameTable:
-		rename := v.RenameTable
+		renameTbl := v.RenameTable
 		s.LogInfo("Renaming table",
 			"schema", schema,
-			"table:", table,
-			"from_table", rename.FromTable,
-			"to_table", rename.ToTable,
+			"table", table,
+			"from_table", renameTbl.FromTable,
+			"to_table", renameTbl.ToTable,
 		)
 
-		return errors.New("rename table is not implemented yet")
+		return m.RenameTable(ctx, schema, table, renameTbl.FromTable, renameTbl.ToTable)
 	default:
 		return fmt.Errorf("unknown rename operation: %T", v)
 	}
 }
 
-func (s *Server) migrateAdd(_ context.Context, m *migrator.Migrator, schema string, table string, add *pb.AddOperation) error {
+func (s *Server) migrateAdd(ctx context.Context, m *migrator.Migrator, schema string, table string, add *pb.AddOperation) error {
 	switch v := add.Entity.(type) {
 	case *pb.AddOperation_AddColumnWithDefaultValue:
-		add := v.AddColumnWithDefaultValue
+		addCol := v.AddColumnWithDefaultValue
 		s.LogInfo("Adding column with default value",
 			"schema", schema,
 			"table", table,
-			"column", add.Column,
-			"column_type", add.ColumnType,
-			"default_value", add.DefaultValue,
+			"column", addCol.Column,
+			"column_type", addCol.ColumnType,
+			"default_value", addCol.DefaultValue,
 		)
 
-		return errors.New("add column is not implemented yet")
+		return m.AddColumnWithDefaultValue(ctx, schema, table, addCol.Column, addCol.ColumnType, addCol.DefaultValue)
 	case *pb.AddOperation_AddColumnInHistoryMode:
-		add := v.AddColumnInHistoryMode
+		addColHist := v.AddColumnInHistoryMode
 		s.LogInfo("Adding column in history mode",
 			"schema", schema,
 			"table", table,
-			"column", add.Column,
-			"column_type", add.ColumnType,
-			"default_value", add.DefaultValue,
-			"operation_timestamp", add.OperationTimestamp,
+			"column", addColHist.Column,
+			"column_type", addColHist.ColumnType,
+			"default_value", addColHist.DefaultValue,
+			"operation_timestamp", addColHist.OperationTimestamp,
 		)
 
-		return errors.New("add column in history mode is not implemented yet")
+		return m.AddColumnInHistoryMode(ctx, schema, table, addColHist.Column, addColHist.ColumnType, addColHist.DefaultValue, addColHist.OperationTimestamp)
 	default:
 		return fmt.Errorf("unknown add operation: %T", v)
 	}
 }
 
-func (s *Server) migrateUpdateColumnValue(_ context.Context, m *migrator.Migrator, schema string, table string, update *pb.UpdateColumnValueOperation) error {
+func (s *Server) migrateUpdateColumnValue(ctx context.Context, m *migrator.Migrator, schema string, table string, update *pb.UpdateColumnValueOperation) error {
 	s.LogInfo("Updating column values",
 		"schema", schema,
 		"table", table,
 		"column", update.Column,
 		"value", update.Value,
 	)
-	return errors.New("update column value migration not implemented yet")
+	return m.UpdateColumnValue(ctx, schema, table, update.Column, update.Value)
 }
 
-func (s *Server) migrateTableSyncModeMigration(_ context.Context, m *migrator.Migrator, schema string, table string, migration *pb.TableSyncModeMigrationOperation) error {
+func (s *Server) migrateTableSyncModeMigration(ctx context.Context, m *migrator.Migrator, schema string, table string, migration *pb.TableSyncModeMigrationOperation) error {
 	s.LogInfo("Migrating table sync mode",
 		"schema", schema,
 		"table", table,
@@ -197,15 +196,30 @@ func (s *Server) migrateTableSyncModeMigration(_ context.Context, m *migrator.Mi
 		"soft_deleted_column", migration.SoftDeletedColumn,
 		"keep_deleted_row", migration.KeepDeletedRows,
 	)
+	// Extract optional values with defaults
+	softDeletedColumn := ""
+	if migration.SoftDeletedColumn != nil {
+		softDeletedColumn = *migration.SoftDeletedColumn
+	}
+	keepDeletedRows := false
+	if migration.KeepDeletedRows != nil {
+		keepDeletedRows = *migration.KeepDeletedRows
+	}
+
 	switch migration.Type {
 	case pb.TableSyncModeMigrationType_SOFT_DELETE_TO_LIVE:
+		return m.ModeSoftDeleteToLive(ctx, schema, table, softDeletedColumn)
 	case pb.TableSyncModeMigrationType_SOFT_DELETE_TO_HISTORY:
+		return m.ModeSoftDeleteToHistory(ctx, schema, table, softDeletedColumn)
 	case pb.TableSyncModeMigrationType_HISTORY_TO_SOFT_DELETE:
+		return m.ModeHistoryToSoftDelete(ctx, schema, table, softDeletedColumn)
 	case pb.TableSyncModeMigrationType_HISTORY_TO_LIVE:
+		return m.ModeHistoryToLive(ctx, schema, table, keepDeletedRows)
 	case pb.TableSyncModeMigrationType_LIVE_TO_SOFT_DELETE:
+		return m.ModeLiveToSoftDelete(ctx, schema, table, softDeletedColumn)
 	case pb.TableSyncModeMigrationType_LIVE_TO_HISTORY:
+		return m.ModeLiveToHistory(ctx, schema, table)
 	default:
 		return fmt.Errorf("unknown table sync mode migration type: %v", migration.Type)
 	}
-	return errors.New("table sync mode migration not implemented yet")
 }
