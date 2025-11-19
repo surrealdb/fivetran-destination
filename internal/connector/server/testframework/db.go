@@ -117,3 +117,43 @@ func ConnectAndUse(ctx context.Context, endpoint, namespace, database, username,
 
 	return db, nil
 }
+
+// SetupTestDB creates a connection to SurrealDB for testing.
+// It cleans up any existing data in the namespace/database and returns a configured DB connection.
+// The caller is responsible for closing the connection and creating any domain-specific objects (e.g., Migrator).
+func SetupTestDB(t *testing.T, namespace, database string) (*surrealdb.DB, error) {
+	ctx := context.Background()
+
+	db, err := SetupRootConnection(t, GetSurrealDBEndpoint())
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to SurrealDB: %w", err)
+	}
+
+	// Clean up existing namespace by removing and recreating it
+	_, err = surrealdb.Query[any](ctx, db, fmt.Sprintf("REMOVE NAMESPACE IF EXISTS %s", namespace), nil)
+	if err != nil {
+		if closeErr := db.Close(ctx); closeErr != nil {
+			t.Logf("failed to close SurrealDB connection: %v", closeErr)
+		}
+		return nil, fmt.Errorf("failed to remove existing namespace: %w", err)
+	}
+
+	_, err = surrealdb.Query[any](ctx, db, fmt.Sprintf("DEFINE NAMESPACE %s", namespace), nil)
+	if err != nil {
+		if closeErr := db.Close(ctx); closeErr != nil {
+			t.Logf("failed to close SurrealDB connection: %v", closeErr)
+		}
+		return nil, fmt.Errorf("failed to create namespace: %w", err)
+	}
+
+	// Use the namespace and database
+	err = db.Use(ctx, namespace, database)
+	if err != nil {
+		if closeErr := db.Close(ctx); closeErr != nil {
+			t.Logf("failed to close SurrealDB connection: %v", closeErr)
+		}
+		return nil, fmt.Errorf("failed to use namespace/database: %w", err)
+	}
+
+	return db, nil
+}
