@@ -2,6 +2,9 @@ package migrator
 
 import (
 	"context"
+	"fmt"
+
+	surrealdb "github.com/surrealdb/surrealdb.go"
 )
 
 // UpdateColumnValue updates all values in a specified column with a new value.
@@ -13,12 +16,32 @@ import (
 //
 // NULL is supported as a valid update value.
 func (m *Migrator) UpdateColumnValue(ctx context.Context, schema, table, column, value string) error {
-	// TODO: Implement update column value logic
-	// 1. Update all rows in the table with the new value:
-	//    UPDATE table SET column = value
-	// 2. Handle NULL value case:
-	//    If value represents NULL, use: UPDATE table SET column = NONE
-	// 3. Return any errors encountered
+	var query string
+	var params map[string]any
+
+	// Handle NULL/NONE value case - use NONE literal in SurrealDB for option types
+	if value == "" || value == "NULL" || value == "null" {
+		// Use NONE literal directly in query for option types
+		query = fmt.Sprintf("UPDATE %s SET %s = NONE", table, column)
+		params = nil
+	} else {
+		// Use parameterized query for regular values
+		query = fmt.Sprintf("UPDATE %s SET %s = $value", table, column)
+		params = map[string]any{
+			"value": value,
+		}
+	}
+
+	_, err := surrealdb.Query[[]map[string]any](ctx, m.db, query, params)
+	if err != nil {
+		return fmt.Errorf("failed to update column value: %w", err)
+	}
+
+	m.LogInfo("Updated column value",
+		"table", table,
+		"column", column,
+		"value", value,
+	)
 
 	return nil
 }
