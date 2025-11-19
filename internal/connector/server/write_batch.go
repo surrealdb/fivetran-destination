@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/surrealdb/fivetran-destination/internal/connector/tablemapper"
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
 	"github.com/surrealdb/surrealdb.go"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
@@ -66,8 +67,8 @@ func (s *Server) writeBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb
 		}, err
 	}
 
-	fields := make(map[string]columnInfo)
-	for _, column := range tb.columns {
+	fields := make(map[string]tablemapper.ColumnInfo)
+	for _, column := range tb.Columns {
 		fields[column.Name] = column
 	}
 
@@ -109,7 +110,7 @@ func (s *Server) writeBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb
 }
 
 // Reads CSV files and updates existing records accordingly.
-func (s *Server) batchUpdate(ctx context.Context, db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteBatchRequest) error {
+func (s *Server) batchUpdate(ctx context.Context, db *surrealdb.DB, fields map[string]tablemapper.ColumnInfo, req *pb.WriteBatchRequest) error {
 	unmodifiedString := req.FileParams.UnmodifiedString
 
 	return s.processCSVRecords(req.UpdateFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
@@ -163,7 +164,7 @@ func (s *Server) batchUpdate(ctx context.Context, db *surrealdb.DB, fields map[s
 
 			var typedV interface{}
 
-			typedV, err := f.strToSurrealType(v)
+			typedV, err := f.StrToSurrealType(v)
 			if err != nil {
 				return fmt.Errorf("unable to convert value %s to surreal type %+v: %w", v, f, err)
 			}
@@ -232,7 +233,7 @@ func (s *Server) upsertMerge(ctx context.Context, db *surrealdb.DB, thing models
 }
 
 // Reads CSV files and deletes existing records accordingly.
-func (s *Server) batchDelete(ctx context.Context, db *surrealdb.DB, fields map[string]columnInfo, req *pb.WriteBatchRequest) error {
+func (s *Server) batchDelete(ctx context.Context, db *surrealdb.DB, fields map[string]tablemapper.ColumnInfo, req *pb.WriteBatchRequest) error {
 	return s.processCSVRecords(req.DeleteFiles, req.FileParams, req.Keys, func(columns []string, record []string) error {
 		if s.Debugging() {
 			s.LogDebug("Deleting record", "columns", columns, "record", record)
