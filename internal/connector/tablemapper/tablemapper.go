@@ -54,10 +54,9 @@ type TableInfo struct {
 
 // ColumnInfo contains information about a column in a table.
 type ColumnInfo struct {
-	Name       string
-	SDBType    string
-	PrimaryKey bool
-	Optional   bool
+	Name     string
+	SDBType  string
+	Optional bool
 	ColumnMeta
 }
 
@@ -81,6 +80,8 @@ type ColumnMeta struct {
 	// This is used to map the SurrealDB field to the correct data type in the Fivetran schema,
 	// even in case the type cannot be directly represented in the SurrealDB schema.
 	FtType pb.DataType `json:"ft_data_type"`
+	// FtPrimaryKey indicates whether this column is a primary key in the Fivetran schema.
+	FtPrimaryKey bool `json:"ft_primary_key"`
 
 	// DecimalPrecision is the precision for decimal types.
 	// It is only set when the FtType is pb.DataType_DECIMAL.
@@ -202,8 +203,9 @@ func ColumnsFromSurrealToFivetran(sColumns []ColumnInfo) ([]*pb.Column, error) {
 
 	for _, c := range sColumns {
 		ftColumns = append(ftColumns, &pb.Column{
-			Name: c.Name,
-			Type: c.FtType,
+			Name:       c.Name,
+			Type:       c.FtType,
+			PrimaryKey: c.FtPrimaryKey,
 		})
 	}
 

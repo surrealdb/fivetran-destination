@@ -246,6 +246,7 @@ func NewColumnMeta(c *pb.Column, columnIndex int) ColumnMeta {
 	return ColumnMeta{
 		FtIndex:          columnIndex,
 		FtType:           c.Type,
+		FtPrimaryKey:     c.PrimaryKey,
 		DecimalPrecision: PbColumnDecimalPrecision(c),
 	}
 }
