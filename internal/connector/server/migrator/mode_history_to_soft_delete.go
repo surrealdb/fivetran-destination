@@ -2,6 +2,10 @@ package migrator
 
 import (
 	"context"
+	"fmt"
+
+	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 // This query identifies and deletes non-latest versions of records in batches.
@@ -62,25 +66,147 @@ COMMIT;
 // This reverses the history mode conversion, keeping only the latest version
 // of each record.
 func (m *Migrator) ModeHistoryToSoftDelete(ctx context.Context, schema, table, softDeletedColumn string) error {
-	// TODO: Implement history to soft delete mode migration
-	// 1. Add soft delete column if not present:
-	//    DEFINE FIELD softDeletedColumn ON table TYPE bool
-	// 2. Delete historical versions (non-latest):
-	//    Conceptually `DELETE SELECT * FROM table WHERE is_not_latest_version` in batches.
-	//    See the const above for an example query to identify and delete non-latest versions in batches.
-	// 3. Remove Fivetran primary key index
-	//    (See DefineFivetranPKIndex)
-	// 4. Remove history mode columns:
-	//    REMOVE FIELD _fivetran_start ON table
-	//    REMOVE FIELD _fivetran_end ON table
-	//    REMOVE FIELD _fivetran_active ON table
-	// 5. Update each record's ID to not contain _fivetran_start.
-	//    Note that you cannot `SET id = array::slice(record::id(id), 0, array::len(record::id(id) - 1))`` because SurrealDB does not allow updating the record IDs.
-	//    Instead, you need to create another table with the desired record IDs, remove the old table, and create a new table with the original name.
-	//    array::last(INSERT INTO new_table SELECT array::slice(record::id(id), 0, array::len(record::id(id)) - 1) as id, not(_fivetran_active) as softDeletedColumn, * OMIT _fivetran_active FROM DELETE (SELECT * OMIT _fivetran_start, _fivetran_end FROM old_table LIMIT $batch_size) RETURN BEFORE) // Repeat until all records are migrated to new temp table
-	//    array::last(INSERT INTO old_table DELETE SELECT * FROM new_table LIMIT $batch_size RETURN BEFORE) // Move records back to original table
-	//    REMOVE TABLE new_table // Clean up the emptied temporary table
-	// 6. Return any errors encountered
+	const batchSize = 1000
+	const maxIterations = 100
+
+	// 1. Add soft delete column
+	defineFieldQuery := fmt.Sprintf("DEFINE FIELD %s ON %s TYPE option<bool>", softDeletedColumn, table)
+	_, err := surrealdb.Query[any](ctx, m.db, defineFieldQuery, nil)
+	if err != nil {
+		return fmt.Errorf("failed to add soft delete column %s: %w", softDeletedColumn, err)
+	}
+
+	// 2. Delete historical versions (non-latest) in batches
+	// For each primary key, keep only the record with the highest _fivetran_start
+	deleteQuery := fmt.Sprintf(`
+		BEGIN;
+		LET $res = SELECT
+			array::first(pk) AS first_seen_pk,
+			array::last(pk) AS last_seen_pk,
+			array::group(to_delete_per_pk) AS to_delete
+		FROM (
+			SELECT
+				pk,
+				array::slice(group, 0, array::len(group)-1) as to_delete_per_pk
+			FROM (
+				SELECT
+					pk,
+					array::group(id) AS group
+				FROM (
+					SELECT
+						id,
+						array::slice(record::id(id), 0, array::len(record::id(id))-1) AS pk
+					FROM %s
+					WHERE id >= $start_id
+					LIMIT $batch_size
+				) GROUP BY pk
+			)
+		) GROUP ALL;
+		LET $to_delete = $res[0].to_delete;
+		LET $deleted = IF array::len($to_delete) > 0 { DELETE $to_delete RETURN BEFORE } ELSE { [] };
+		RETURN {
+			first_seen_pk: $res[0].first_seen_pk,
+			last_seen_pk: $res[0].last_seen_pk,
+			to_delete: $to_delete,
+			deleted: $deleted
+		};
+		COMMIT;
+	`, table)
+
+	// Check if table is empty first
+	type CountResult struct {
+		Count int `cbor:"count"`
+	}
+	countResults, err := surrealdb.Query[[]CountResult](ctx, m.db, fmt.Sprintf("SELECT count() AS count FROM %s GROUP ALL", table), nil)
+	if err != nil {
+		return fmt.Errorf("failed to count records in %s: %w", table, err)
+	}
+
+	tableIsEmpty := countResults == nil || len(*countResults) == 0 || len((*countResults)[0].Result) == 0 || (*countResults)[0].Result[0].Count == 0
+
+	// Start from the beginning
+	startID := models.NewRecordID(table, []any{})
+	completed := tableIsEmpty // Skip deletion loop if table is empty
+	for iteration := 0; iteration < maxIterations && !completed; iteration++ {
+		type DeleteResult struct {
+			FirstSeenPK []any            `cbor:"first_seen_pk"`
+			LastSeenPK  []any            `cbor:"last_seen_pk"`
+			ToDelete    []map[string]any `cbor:"to_delete"`
+			Deleted     []map[string]any `cbor:"deleted"`
+		}
+		results, err := surrealdb.Query[DeleteResult](ctx, m.db, deleteQuery, map[string]any{
+			"start_id":   startID,
+			"batch_size": batchSize,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to delete historical versions: %w", err)
+		}
+
+		// Check results are valid
+		if results == nil {
+			return fmt.Errorf("unexpected nil results when deleting historical versions from %s", table)
+		}
+		if len(*results) == 0 {
+			return fmt.Errorf("unexpected empty results when deleting historical versions from %s", table)
+		}
+
+		// Get the result from the RETURN statement (first result contains the returned value)
+		res := (*results)[0].Result
+
+		// Stop if first_seen_pk == last_seen_pk and to_delete/deleted are empty
+		// This means we've processed all records
+		if len(res.ToDelete) == 0 && len(res.Deleted) == 0 {
+			if len(res.FirstSeenPK) == len(res.LastSeenPK) {
+				allEqual := true
+				for i := range res.FirstSeenPK {
+					if res.FirstSeenPK[i] != res.LastSeenPK[i] {
+						allEqual = false
+						break
+					}
+				}
+				if allEqual {
+					completed = true
+					break
+				}
+			}
+		}
+
+		// Update start_id for next iteration based on last_seen_pk
+		if len(res.LastSeenPK) == 0 {
+			completed = true
+			break
+		}
+		startID = models.NewRecordID(table, res.LastSeenPK)
+	}
+
+	if !completed {
+		return fmt.Errorf("exceeded maximum iterations (%d) while deleting historical versions from %s", maxIterations, table)
+	}
+
+	// 3. Remove history mode field definitions from schema
+	for _, field := range []string{"_fivetran_start", "_fivetran_end", "_fivetran_active"} {
+		removeQuery := fmt.Sprintf("REMOVE FIELD %s ON %s", field, table)
+		_, err := surrealdb.Query[any](ctx, m.db, removeQuery, nil)
+		if err != nil {
+			return fmt.Errorf("failed to remove field %s from %s: %w", field, table, err)
+		}
+	}
+
+	// 4. Update IDs to remove _fivetran_start component and convert _fivetran_active to soft delete column
+	// ID transformation: [pk1, pk2, ..., _fivetran_start] -> [pk1, pk2, ...]
+	// Also: softDeletedColumn = NOT _fivetran_active
+	idExpression := "array::slice(record::id(id), 0, array::len(record::id(id)) - 1)"
+	insertedFields := fmt.Sprintf("NOT(_fivetran_active) AS %s, * OMIT _fivetran_start, _fivetran_end, _fivetran_active", softDeletedColumn)
+
+	err = m.BatchUpdateIDs(ctx, table, "*", idExpression, insertedFields, batchSize)
+	if err != nil {
+		return fmt.Errorf("failed to update record IDs: %w", err)
+	}
+
+	m.LogInfo("Converted table from history to soft delete mode",
+		"table", table,
+		"soft_delete_column", softDeletedColumn,
+	)
 
 	return nil
 }
