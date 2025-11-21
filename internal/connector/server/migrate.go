@@ -110,7 +110,7 @@ func (s *Server) migrateCopy(ctx context.Context, m *migrator.Migrator, schema s
 			"to_table", copyTbl.ToTable,
 		)
 
-		return m.CopyTable(ctx, schema, table, copyTbl.FromTable, copyTbl.ToTable)
+		return m.CopyTable(ctx, schema, copyTbl.FromTable, copyTbl.ToTable)
 	case *pb.CopyOperation_CopyTableToHistoryMode:
 		copyHist := v.CopyTableToHistoryMode
 		s.LogInfo("Copying table to history mode",
