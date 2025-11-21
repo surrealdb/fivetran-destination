@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/surrealdb/fivetran-destination/internal/connector/server/migrator"
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
@@ -172,7 +173,16 @@ func (s *Server) migrateAdd(ctx context.Context, m *migrator.Migrator, schema st
 			"operation_timestamp", addColHist.OperationTimestamp,
 		)
 
-		return m.AddColumnInHistoryMode(ctx, schema, table, addColHist.Column, addColHist.ColumnType, addColHist.DefaultValue, addColHist.OperationTimestamp)
+		column := pb.Column{
+			Name: addColHist.Column,
+			Type: addColHist.ColumnType,
+		}
+
+		operationTimestamp, err := time.Parse(time.RFC3339, addColHist.OperationTimestamp)
+		if err != nil {
+			return fmt.Errorf("invalid operation_timestamp: %w", err)
+		}
+		return m.AddColumnInHistoryMode(ctx, schema, table, &column, addColHist.DefaultValue, operationTimestamp)
 	default:
 		return fmt.Errorf("unknown add operation: %T", v)
 	}
