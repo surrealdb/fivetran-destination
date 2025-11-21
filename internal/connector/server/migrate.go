@@ -78,7 +78,12 @@ func (s *Server) migrateDrop(ctx context.Context, m *migrator.Migrator, schema s
 			"operation_timestamp", dropCol.OperationTimestamp,
 		)
 
-		return m.DropColumnInHistoryMode(ctx, schema, table, dropCol.Column, dropCol.OperationTimestamp)
+		operationTimestamp, err := time.Parse(time.RFC3339, dropCol.OperationTimestamp)
+		if err != nil {
+			return fmt.Errorf("invalid operation_timestamp: %w", err)
+		}
+
+		return m.DropColumnInHistoryMode(ctx, schema, table, dropCol.Column, operationTimestamp)
 	default:
 		return fmt.Errorf("unknown drop operation: %T", v)
 	}
