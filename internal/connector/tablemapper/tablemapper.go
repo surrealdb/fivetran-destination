@@ -94,6 +94,10 @@ type ColumnMeta struct {
 	// will be an error in SurrealDB side, we fall back to
 	// using float type in case the precision is larger than 28 (to be safe).
 	DecimalPrecision uint32 `json:"decimal_precision,omitempty"`
+
+	// DecimalScale is the scale (number of decimal places) for decimal types.
+	// It is only set when the FtType is pb.DataType_DECIMAL.
+	DecimalScale uint32 `json:"ft_decimal_scale,omitempty"`
 }
 
 // ErrTableNotFound is returned when a table is not found.
@@ -214,7 +218,7 @@ func ColumnsFromSurrealToFivetran(sColumns []ColumnInfo) ([]*pb.Column, error) {
 				Params: &pb.DataTypeParams_Decimal{
 					Decimal: &pb.DecimalParams{
 						Precision: c.DecimalPrecision,
-						Scale:     0, // Scale is not currently stored in ColumnInfo
+						Scale:     c.DecimalScale,
 					},
 				},
 			}

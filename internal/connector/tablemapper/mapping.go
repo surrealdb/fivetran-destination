@@ -241,6 +241,18 @@ func PbColumnDecimalPrecision(c *pb.Column) uint32 {
 	return params.Decimal.Precision
 }
 
+// PbColumnDecimalScale returns the decimal scale for a protobuf column.
+func PbColumnDecimalScale(c *pb.Column) uint32 {
+	if c.Type != pb.DataType_DECIMAL {
+		return 0
+	}
+	params, ok := c.Params.Params.(*pb.DataTypeParams_Decimal)
+	if !ok {
+		return 0
+	}
+	return params.Decimal.Scale
+}
+
 // NewColumnMeta creates a new ColumnMeta from a protobuf column.
 func NewColumnMeta(c *pb.Column, columnIndex int) ColumnMeta {
 	return ColumnMeta{
@@ -248,5 +260,6 @@ func NewColumnMeta(c *pb.Column, columnIndex int) ColumnMeta {
 		FtType:           c.Type,
 		FtPrimaryKey:     c.PrimaryKey,
 		DecimalPrecision: PbColumnDecimalPrecision(c),
+		DecimalScale:     PbColumnDecimalScale(c),
 	}
 }
