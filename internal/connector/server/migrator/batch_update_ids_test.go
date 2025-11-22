@@ -34,7 +34,7 @@ func TestBatchUpdateIDs_BasicUpdate(t *testing.T) {
 	}
 
 	// Update IDs by appending "_v2" (cast to string for numeric IDs)
-	err = migrator.BatchUpdateIDs(ctx, "items", "id, name, value", `<string>record::id(id) + "_v2"`, "name, value", 2)
+	err = migrator.BatchUpdateIDs(ctx, "items", "id, name, value", `<string>record::id(id) + "_v2"`, "name, value", 2, nil)
 	require.NoError(t, err, "BatchUpdateIDs failed")
 
 	// Verify records have new IDs
@@ -66,7 +66,7 @@ func TestBatchUpdateIDs_EmptyTable(t *testing.T) {
 	require.NoError(t, err, "Failed to create table")
 
 	// Update IDs on empty table (cast to string for numeric IDs)
-	err = migrator.BatchUpdateIDs(ctx, "empty_items", "id, name", `<string>record::id(id) + "_new"`, "name", 10)
+	err = migrator.BatchUpdateIDs(ctx, "empty_items", "id, name", `<string>record::id(id) + "_new"`, "name", 10, nil)
 	require.NoError(t, err, "BatchUpdateIDs on empty table should not fail")
 }
 
@@ -93,7 +93,7 @@ func TestBatchUpdateIDs_PreservesData(t *testing.T) {
 	require.NoError(t, err, "Failed to insert data")
 
 	// Update IDs (cast to string for numeric IDs)
-	err = migrator.BatchUpdateIDs(ctx, "products", "id, name, price, stock", `<string>record::id(id) + "_updated"`, "name, price, stock", 10)
+	err = migrator.BatchUpdateIDs(ctx, "products", "id, name, price, stock", `<string>record::id(id) + "_updated"`, "name, price, stock", 10, nil)
 	require.NoError(t, err, "BatchUpdateIDs failed")
 
 	// Verify data is preserved

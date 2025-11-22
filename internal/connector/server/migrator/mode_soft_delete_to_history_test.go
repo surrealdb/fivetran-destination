@@ -29,9 +29,9 @@ func TestModeSoftDeleteToHistory_BasicConversion(t *testing.T) {
 	// Insert data with some soft-deleted records
 	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	_, err = surrealdb.Query[any](ctx, db, `
-		CREATE users:1 SET name = 'Alice', email = 'alice@example.com', _fivetran_deleted = false, _fivetran_synced = d'2024-01-01T00:00:00Z';
-		CREATE users:2 SET name = 'Bob', email = 'bob@example.com', _fivetran_deleted = true, _fivetran_synced = d'2024-01-02T00:00:00Z';
-		CREATE users:3 SET name = 'Charlie', email = 'charlie@example.com', _fivetran_deleted = false, _fivetran_synced = d'2024-01-03T00:00:00Z';
+		CREATE users:[1] SET name = 'Alice', email = 'alice@example.com', _fivetran_deleted = false, _fivetran_synced = d'2024-01-01T00:00:00Z';
+		CREATE users:[2] SET name = 'Bob', email = 'bob@example.com', _fivetran_deleted = true, _fivetran_synced = d'2024-01-02T00:00:00Z';
+		CREATE users:[3] SET name = 'Charlie', email = 'charlie@example.com', _fivetran_deleted = false, _fivetran_synced = d'2024-01-03T00:00:00Z';
 	`, nil)
 	require.NoError(t, err, "Failed to insert data")
 
@@ -115,8 +115,8 @@ func TestModeSoftDeleteToHistory_AllRecordsActive(t *testing.T) {
 
 	// Insert data with all active records
 	_, err = surrealdb.Query[any](ctx, db, `
-		CREATE products:1 SET name = 'Product A', price = 10.0, _fivetran_deleted = false, _fivetran_synced = d'2024-01-01T00:00:00Z';
-		CREATE products:2 SET name = 'Product B', price = 20.0, _fivetran_deleted = false, _fivetran_synced = d'2024-01-02T00:00:00Z';
+		CREATE products:[1] SET name = 'Product A', price = 10.0, _fivetran_deleted = false, _fivetran_synced = d'2024-01-01T00:00:00Z';
+		CREATE products:[2] SET name = 'Product B', price = 20.0, _fivetran_deleted = false, _fivetran_synced = d'2024-01-02T00:00:00Z';
 	`, nil)
 	require.NoError(t, err, "Failed to insert data")
 
@@ -174,8 +174,8 @@ func TestModeSoftDeleteToHistory_AllRecordsDeleted(t *testing.T) {
 
 	// Insert data with all deleted records
 	_, err = surrealdb.Query[any](ctx, db, `
-		CREATE items:1 SET description = 'Item 1', _fivetran_deleted = true, _fivetran_synced = d'2024-01-01T00:00:00Z';
-		CREATE items:2 SET description = 'Item 2', _fivetran_deleted = true, _fivetran_synced = d'2024-01-02T00:00:00Z';
+		CREATE items:[1] SET description = 'Item 1', _fivetran_deleted = true, _fivetran_synced = d'2024-01-01T00:00:00Z';
+		CREATE items:[2] SET description = 'Item 2', _fivetran_deleted = true, _fivetran_synced = d'2024-01-02T00:00:00Z';
 	`, nil)
 	require.NoError(t, err, "Failed to insert data")
 
@@ -282,8 +282,8 @@ func TestModeSoftDeleteToHistory_WithNullValues(t *testing.T) {
 
 	// Insert data with null values (NONE in SurrealDB)
 	_, err = surrealdb.Query[any](ctx, db, `
-		CREATE tasks:1 SET title = 'Task 1', description = NONE, _fivetran_deleted = false, _fivetran_synced = d'2024-01-01T00:00:00Z';
-		CREATE tasks:2 SET title = NONE, description = 'Description 2', _fivetran_deleted = true, _fivetran_synced = d'2024-01-02T00:00:00Z';
+		CREATE tasks:[1] SET title = 'Task 1', description = NONE, _fivetran_deleted = false, _fivetran_synced = d'2024-01-01T00:00:00Z';
+		CREATE tasks:[2] SET title = NONE, description = 'Description 2', _fivetran_deleted = true, _fivetran_synced = d'2024-01-02T00:00:00Z';
 	`, nil)
 	require.NoError(t, err, "Failed to insert data")
 
@@ -344,8 +344,8 @@ func TestModeSoftDeleteToHistory_WithMultipleColumns(t *testing.T) {
 
 	// Insert data
 	_, err = surrealdb.Query[any](ctx, db, `
-		CREATE orders:1 SET customer = 'John', total = 100.0, status = 'completed', _fivetran_deleted = false, _fivetran_synced = d'2024-01-01T00:00:00Z';
-		CREATE orders:2 SET customer = 'Jane', total = 200.0, status = 'cancelled', _fivetran_deleted = true, _fivetran_synced = d'2024-01-02T00:00:00Z';
+		CREATE orders:[1] SET customer = 'John', total = 100.0, status = 'completed', _fivetran_deleted = false, _fivetran_synced = d'2024-01-01T00:00:00Z';
+		CREATE orders:[2] SET customer = 'Jane', total = 200.0, status = 'cancelled', _fivetran_deleted = true, _fivetran_synced = d'2024-01-02T00:00:00Z';
 	`, nil)
 	require.NoError(t, err, "Failed to insert data")
 
@@ -411,7 +411,7 @@ func TestModeSoftDeleteToHistory_LargeDataset(t *testing.T) {
 	// Insert 100 records (50 active, 50 deleted)
 	for i := 1; i <= 100; i++ {
 		deleted := i%2 == 0
-		query := `CREATE type::thing("records", $id) SET value = $value, _fivetran_deleted = $deleted, _fivetran_synced = $synced`
+		query := `CREATE type::thing("records", [$id]) SET value = $value, _fivetran_deleted = $deleted, _fivetran_synced = $synced`
 		_, err = surrealdb.Query[any](ctx, db, query, map[string]any{
 			"id":      i,
 			"value":   i * 10,

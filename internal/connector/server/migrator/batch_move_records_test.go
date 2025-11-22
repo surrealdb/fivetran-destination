@@ -36,7 +36,7 @@ func TestBatchMoveRecords_BasicMove(t *testing.T) {
 	}
 
 	// Move records in batches of 3
-	err = migrator.BatchMoveRecords(ctx, "source_table", "dest_table", "*", "*", 3)
+	err = migrator.BatchMoveRecords(ctx, "source_table", "dest_table", "*", "*", 3, nil)
 	require.NoError(t, err, "BatchMoveRecords failed")
 
 	// Verify source is empty
@@ -72,7 +72,7 @@ func TestBatchMoveRecords_EmptyTable(t *testing.T) {
 	require.NoError(t, err, "Failed to create tables")
 
 	// Move from empty table
-	err = migrator.BatchMoveRecords(ctx, "empty_source", "empty_dest", "*", "*", 10)
+	err = migrator.BatchMoveRecords(ctx, "empty_source", "empty_dest", "*", "*", 10, nil)
 	require.NoError(t, err, "BatchMoveRecords on empty table should not fail")
 }
 
@@ -102,6 +102,6 @@ func TestBatchMoveRecords_DefaultBatchSize(t *testing.T) {
 	}
 
 	// Move with batchSize=0 (should use default 1000)
-	err = migrator.BatchMoveRecords(ctx, "src", "dst", "*", "*", 0)
+	err = migrator.BatchMoveRecords(ctx, "src", "dst", "*", "*", 0, nil)
 	require.NoError(t, err, "BatchMoveRecords with default batch size should not fail")
 }

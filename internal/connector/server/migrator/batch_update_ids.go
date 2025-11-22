@@ -18,11 +18,12 @@ import (
 //   - idExpression: SurrealQL expression for new ID (e.g., "record::id(id) + '_v2'")
 //   - insertedFields: fields to INSERT (e.g., "name, value" or "foo2 = foo + '_v2', * OMIT foo")
 //   - batchSize: number of records per batch
+//   - additionalVars: additional query parameters to pass to the query (can be nil)
 //
 // The final INSERT uses "<idExpression> AS id, <insertedFields>" as the inserted fields.
 // This allows renaming fields without repetition, e.g., using "foo2 = foo + '_v2', * OMIT foo"
 // to rename foo to foo2 in the new records.
-func (m *Migrator) BatchUpdateIDs(ctx context.Context, table, selectedFields, idExpression, insertedFields string, batchSize int) error {
+func (m *Migrator) BatchUpdateIDs(ctx context.Context, table, selectedFields, idExpression, insertedFields string, batchSize int, additionalVars map[string]any) error {
 	if batchSize <= 0 {
 		batchSize = 1000
 	}
@@ -60,13 +61,13 @@ func (m *Migrator) BatchUpdateIDs(ctx context.Context, table, selectedFields, id
 
 	// 2. Move records from original to temp with new IDs
 	toTempInsertedFields := fmt.Sprintf("%s AS id, %s", idExpression, insertedFields)
-	err = m.BatchMoveRecords(ctx, table, tempTable, selectedFields, toTempInsertedFields, batchSize)
+	err = m.BatchMoveRecords(ctx, table, tempTable, selectedFields, toTempInsertedFields, batchSize, additionalVars)
 	if err != nil {
 		return fmt.Errorf("failed to move records to temp table: %w", err)
 	}
 
 	// 3. Move records back from temp to original (IDs are already updated)
-	err = m.BatchMoveRecords(ctx, tempTable, table, "*", "*", batchSize)
+	err = m.BatchMoveRecords(ctx, tempTable, table, "*", "*", batchSize, nil)
 	if err != nil {
 		return fmt.Errorf("failed to move records back from temp table: %w", err)
 	}
