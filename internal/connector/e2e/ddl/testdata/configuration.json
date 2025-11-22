@@ -1,0 +1,6 @@
+{
+  "url": "ws://localhost:8000/rpc",
+  "ns": "e2e_ddl_ns",
+  "user": "root",
+  "pass": "root"
+}

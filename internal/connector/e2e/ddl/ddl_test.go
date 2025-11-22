@@ -13,7 +13,7 @@ import (
 	"github.com/surrealdb/fivetran-destination/internal/connector/e2e"
 )
 
-// TestConnector_basic_usingSDKTester runs the Fivetran SDK tester against the connector.
+// TestConnector_ddl_usingSDKTester runs the Fivetran SDK tester against the connector.
 //
 // PREREQUISITES:
 //  1. SurrealDB must be running at localhost:8000 with root/root credentials
@@ -27,9 +27,9 @@ import (
 //
 // Expected duration: ~10-15 seconds
 // The test will fail if the SDK tester finds bugs in the connector implementation.
-func TestConnector_basic_usingSDKTester(t *testing.T) {
-	// Start connector server on port 50052 (matches run_sdktester.sh)
-	server := e2e.StartTestServerOnPort(t, 50052)
+func TestConnector_ddl_usingSDKTester(t *testing.T) {
+	// Start connector server on port 50053 (matches run_sdktester.sh)
+	server := e2e.StartTestServerOnPort(t, 50053)
 	defer server.Stop(t)
 
 	// Wait for server to be ready
@@ -37,7 +37,7 @@ func TestConnector_basic_usingSDKTester(t *testing.T) {
 	err := server.WaitForReady(ctx, 10*time.Second)
 	require.NoError(t, err, "server should become ready")
 
-	t.Log("Connector server is ready on port 50052")
+	t.Log("Connector server is ready on port 50053")
 
 	// Execute run_sdktester.sh (located at ./testdata/run_sdktester.sh)
 	sdkTesterScript := filepath.Join("testdata", "run_sdktester.sh")
