@@ -1,0 +1,6 @@
+{
+  "url": "ws://localhost:8000/rpc",
+  "ns": "e2e_sync_modes_ns",
+  "user": "root",
+  "pass": "root"
+}
