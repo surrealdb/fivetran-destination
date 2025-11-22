@@ -76,6 +76,23 @@ func TestDropColumnInHistoryMode_BasicDrop(t *testing.T) {
 	}
 	assert.Equal(t, 2, deactivated, "Should have 2 deactivated records")
 	assert.Equal(t, 2, active, "Should have 2 active records")
+
+	// Verify the field definition was removed from the table schema
+	type InfoForTableResult struct {
+		Fields map[string]string `cbor:"fields"`
+	}
+	infoResults, err := surrealdb.Query[InfoForTableResult](ctx, db, "INFO FOR TABLE users", nil)
+	require.NoError(t, err, "Failed to get table info")
+	require.NotNil(t, infoResults, "Info result is nil")
+	require.NotEmpty(t, *infoResults, "Info result is empty")
+
+	fields := (*infoResults)[0].Result.Fields
+	_, hasAgeField := fields["age"]
+	assert.False(t, hasAgeField, "age field should be removed from table schema")
+
+	// Verify other fields are still present
+	_, hasNameField := fields["name"]
+	assert.True(t, hasNameField, "name field should still be in table schema")
 }
 
 func TestDropColumnInHistoryMode_EmptyTable(t *testing.T) {
