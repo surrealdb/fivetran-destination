@@ -20,7 +20,6 @@ import (
 //   - insertedFields: fields to INSERT into new table (e.g., "id, name, value" or "*")
 //   - batchSize: number of records per batch
 //   - additionalVars: additional query parameters to pass to the query (can be nil)
-//
 func (m *Migrator) BatchMoveRecords(ctx context.Context, oldTable, newTable, selectedFields, insertedFields string, batchSize int, additionalVars map[string]any) error {
 	if batchSize <= 0 {
 		batchSize = 1000
@@ -44,6 +43,20 @@ func (m *Migrator) BatchMoveRecords(ctx context.Context, oldTable, newTable, sel
 		// Merge additional variables if provided
 		for k, v := range additionalVars {
 			queryParams[k] = v
+		}
+
+		if m.Debugging() {
+			debugSelectQuery := fmt.Sprintf("SELECT %s FROM %s LIMIT %d", selectedFields, oldTable, batchSize)
+			debugSelectRes, err := surrealdb.Query[[]map[string]any](ctx, m.db, debugSelectQuery, queryParams)
+			if err != nil {
+				return fmt.Errorf("failed to debug select before batch move from %s to %s: %w", oldTable, newTable, err)
+			}
+			m.LogDebug("Batch moving records",
+				"old_table", oldTable,
+				"new_table", newTable,
+				"debug_select_query", debugSelectQuery,
+				"debug_select_result", debugSelectRes,
+			)
 		}
 
 		results, err := surrealdb.Query[any](ctx, m.db, query, queryParams)
