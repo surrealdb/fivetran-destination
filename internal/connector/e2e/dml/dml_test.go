@@ -11,9 +11,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/surrealdb/fivetran-destination/internal/connector/e2e"
+	"github.com/surrealdb/fivetran-destination/internal/connector/server/testframework"
 )
 
-// TestConnector_ddl_usingSDKTester runs the Fivetran SDK tester against the connector.
+// TestConnector_dml_usingSDKTester runs the Fivetran SDK tester against the connector.
 //
 // PREREQUISITES:
 //  1. SurrealDB must be running at localhost:8000 with root/root credentials
@@ -21,23 +22,26 @@ import (
 //  2. Docker must be installed and running (SDK tester runs in a container)
 //
 // The test:
-//  1. Starts the connector server on port 50053 (accessible from Docker via host.docker.internal)
+//  1. Starts the connector server on port 50054 (accessible from Docker via host.docker.internal)
 //  2. Runs the Fivetran SDK tester which validates the connector implementation
 //  3. Uses configuration from testdata/configuration.json and testdata/input.json
 //
 // Expected duration: ~10-15 seconds
 // The test will fail if the SDK tester finds bugs in the connector implementation.
-func TestConnector_ddl_usingSDKTester(t *testing.T) {
-	// Start connector server on port 50053 (matches run_sdktester.sh)
-	server := e2e.StartTestServerOnPort(t, 50053)
+func TestConnector_dml_usingSDKTester(t *testing.T) {
+	// Start connector server on port 50054 (matches run_sdktester.sh)
+	server := e2e.StartTestServerOnPort(t, 50054)
 	defer server.Stop(t)
+
+	_, err := testframework.SetupTestDB(t, "e2e_dml_ns", "tester")
+	require.NoError(t, err, "Failed to set up test database")
 
 	// Wait for server to be ready
 	ctx := context.Background()
-	err := server.WaitForReady(ctx, 10*time.Second)
+	err = server.WaitForReady(ctx, 10*time.Second)
 	require.NoError(t, err, "server should become ready")
 
-	t.Log("Connector server is ready on port 50053")
+	t.Log("Connector server is ready on port 50054")
 
 	// Execute run_sdktester.sh (located at ./testdata/run_sdktester.sh)
 	sdkTesterScript := filepath.Join("testdata", "run_sdktester.sh")
