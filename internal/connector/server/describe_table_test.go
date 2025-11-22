@@ -97,7 +97,7 @@ func assertTableEquals(t *testing.T, expected, actual *pb.Table) {
 			require.NotNil(t, expectedDecimal, "Expected decimal params for column %s", actualCol.Name)
 			require.NotNil(t, actualDecimal, "Missing decimal params for column %s", actualCol.Name)
 			require.Equal(t, expectedDecimal.Precision, actualDecimal.Precision, "Decimal precision mismatch for column %s", actualCol.Name)
-			// Note: Scale is not currently stored/retrieved from SurrealDB, so we don't assert on it
+			require.Equal(t, expectedDecimal.Scale, actualDecimal.Scale, "Decimal scale mismatch for column %s", actualCol.Name)
 		}
 	}
 }
