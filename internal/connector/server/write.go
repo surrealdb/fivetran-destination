@@ -23,17 +23,14 @@ func (s *Server) handleReplaceFiles(ctx context.Context, db *surrealdb.DB, field
 			values[column] = record[i]
 		}
 
-		cols, vals, err := s.getPKColumnsAndValues(values, table, fields)
+		_, vals, err := s.getPKColumnsAndValues(values, table, fields)
 		if err != nil {
 			return fmt.Errorf("unable to get primary key columns and values for record %v: %w", values, err)
 		}
 
-		var thing models.RecordID
-		if len(cols) == 1 {
-			thing = models.NewRecordID(table.Name, vals[0])
-		} else {
-			thing = models.NewRecordID(table.Name, vals)
-		}
+		// Always use array-based IDs (even for single-column primary keys)
+		// because our connector defines all table IDs as TYPE array<any>
+		thing := models.NewRecordID(table.Name, vals)
 
 		vars := map[string]interface{}{}
 		for k, v := range values {

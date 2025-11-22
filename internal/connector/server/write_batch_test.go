@@ -6,9 +6,11 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
+	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 
-	pb "github.com/surrealdb/fivetran-destination/internal/pb"
 	"github.com/surrealdb/fivetran-destination/internal/connector/server/testframework"
+	pb "github.com/surrealdb/fivetran-destination/internal/pb"
 )
 
 // setupWriteBatchTest creates a temp directory for CSV files and returns cleanup function
@@ -475,9 +477,9 @@ func TestWriteBatch_SuccessCompositePrimaryKey(t *testing.T) {
 
 	// Create table with composite primary key
 	table := testframework.NewTableDefinition("transactions", map[string]pb.DataType{
-		"user_id":      pb.DataType_STRING,
+		"user_id":        pb.DataType_STRING,
 		"transaction_id": pb.DataType_STRING,
-		"amount":       pb.DataType_FLOAT,
+		"amount":         pb.DataType_FLOAT,
 	}, []string{"user_id", "transaction_id"})
 
 	_, err := srv.CreateTable(t.Context(), &pb.CreateTableRequest{
@@ -747,6 +749,181 @@ func TestWriteBatch_FailureFileNotFound(t *testing.T) {
 	require.NotEmpty(t, warning.Warning)
 }
 
+func TestWriteBatch_SuccessSingleIDPK(t *testing.T) {
+	tempDir, cleanup := setupWriteBatchTest(t)
+	defer cleanup()
+
+	srv := New(zerolog.New(os.Stdout).Level(zerolog.DebugLevel))
+	config := testframework.GetSurrealDBConfig()
+	schema := "test_writebatch"
+
+	// Create table with single primary key named "id"
+	// This tests that our connector properly handles the special "id" column
+	// and creates array-based IDs like products:[1] instead of products:1
+	table := testframework.NewTableDefinition("products", map[string]pb.DataType{
+		"id":    pb.DataType_INT,
+		"name":  pb.DataType_STRING,
+		"price": pb.DataType_FLOAT,
+	}, []string{"id"})
+
+	_, err := srv.CreateTable(t.Context(), &pb.CreateTableRequest{
+		Configuration: config,
+		SchemaName:    schema,
+		Table:         table,
+	})
+	require.NoError(t, err)
+	defer testframework.DropTable(t, config, "test", schema, table.Name)
+
+	// Test 1: Upsert (replace) with "id" as primary key
+	columns := []string{"id", "name", "price"}
+	records := [][]string{
+		{"1", "Product A", "10.50"},
+		{"2", "Product B", "20.75"},
+		{"3", "Product C", "15.25"},
+	}
+	key, err := testframework.GenerateAESKey()
+	require.NoError(t, err)
+	csvFile := testframework.CreateEncryptedCSV(t, tempDir, "id_pk_replace.csv", columns, records, key)
+
+	batchResp, err := srv.WriteBatch(t.Context(), &pb.WriteBatchRequest{
+		Configuration: config,
+		SchemaName:    schema,
+		Table:         table,
+		ReplaceFiles:  []string{csvFile},
+		Keys:          map[string][]byte{csvFile: key},
+		FileParams:    testframework.GetTestFileParams(),
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, batchResp)
+	success, ok := batchResp.Response.(*pb.WriteBatchResponse_Success)
+	require.True(t, ok, "Expected WriteBatch success response")
+	require.True(t, success.Success)
+
+	// Verify records were created with array-based IDs (products:[1], not products:1)
+	testframework.AssertRecordCount(t, config, "test", schema, table.Name, 3)
+
+	// Connect to DB and verify the actual record IDs are array-based
+	ctx := t.Context()
+	db, err := testframework.ConnectAndUse(ctx, config["url"], "test", schema, config["user"], config["pass"])
+	require.NoError(t, err, "Failed to connect to database")
+	defer func() {
+		if err := db.Close(ctx); err != nil {
+			t.Logf("Failed to close database connection: %v", err)
+		}
+	}()
+
+	// Query records and verify ID structure
+	result, err := surrealdb.Query[[]map[string]interface{}](ctx, db, "SELECT * FROM products ORDER BY id", nil)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotEmpty(t, *result)
+	dbRecords := (*result)[0].Result
+	require.Len(t, dbRecords, 3)
+
+	// Verify record IDs are array-based: products:[1], products:[2], products:[3]
+	expectedID1 := models.NewRecordID("products", []any{uint64(1)})
+	expectedID2 := models.NewRecordID("products", []any{uint64(2)})
+	expectedID3 := models.NewRecordID("products", []any{uint64(3)})
+
+	require.Equal(t, expectedID1, dbRecords[0]["id"], "Record ID should be products:[1] (array-based)")
+	require.Equal(t, expectedID2, dbRecords[1]["id"], "Record ID should be products:[2] (array-based)")
+	require.Equal(t, expectedID3, dbRecords[2]["id"], "Record ID should be products:[3] (array-based)")
+
+	// Verify field values
+	require.Equal(t, "Product A", dbRecords[0]["name"])
+	require.Equal(t, float32(10.5), dbRecords[0]["price"])
+	require.Equal(t, "Product B", dbRecords[1]["name"])
+	require.Equal(t, float32(20.75), dbRecords[1]["price"])
+	require.Equal(t, "Product C", dbRecords[2]["name"])
+	require.Equal(t, float32(15.25), dbRecords[2]["price"])
+
+	// Test 2: Update with "id" as primary key
+	updateColumns := []string{"id", "name", "price"}
+	updateRecords := [][]string{
+		{"1", "Product A Updated", "11.00"},
+		{"3", "Product C Updated", "16.00"},
+	}
+	updateKey, err := testframework.GenerateAESKey()
+	require.NoError(t, err)
+	updateFile := testframework.CreateEncryptedCSV(t, tempDir, "id_pk_update.csv", updateColumns, updateRecords, updateKey)
+
+	batchResp, err = srv.WriteBatch(t.Context(), &pb.WriteBatchRequest{
+		Configuration: config,
+		SchemaName:    schema,
+		Table:         table,
+		UpdateFiles:   []string{updateFile},
+		Keys:          map[string][]byte{updateFile: updateKey},
+		FileParams:    testframework.GetTestFileParams(),
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, batchResp)
+	success, ok = batchResp.Response.(*pb.WriteBatchResponse_Success)
+	require.True(t, ok, "Expected WriteBatch success response")
+	require.True(t, success.Success)
+
+	// Verify updates worked correctly and IDs are still array-based
+	result, err = surrealdb.Query[[]map[string]interface{}](ctx, db, "SELECT * FROM products ORDER BY id", nil)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	dbRecords = (*result)[0].Result
+	require.Len(t, dbRecords, 3)
+
+	// IDs should still be array-based after update
+	require.Equal(t, expectedID1, dbRecords[0]["id"], "Record ID should remain products:[1] after update")
+	require.Equal(t, expectedID2, dbRecords[1]["id"], "Record ID should remain products:[2] after update")
+	require.Equal(t, expectedID3, dbRecords[2]["id"], "Record ID should remain products:[3] after update")
+
+	// Verify field values after update
+	require.Equal(t, "Product A Updated", dbRecords[0]["name"])
+	require.Equal(t, float32(11.0), dbRecords[0]["price"])
+	require.Equal(t, "Product B", dbRecords[1]["name"]) // Unchanged
+	require.Equal(t, "Product C Updated", dbRecords[2]["name"])
+	require.Equal(t, float32(16.0), dbRecords[2]["price"])
+
+	// Test 3: Delete with "id" as primary key
+	deleteColumns := []string{"id"}
+	deleteRecords := [][]string{
+		{"2"},
+	}
+	deleteKey, err := testframework.GenerateAESKey()
+	require.NoError(t, err)
+	deleteFile := testframework.CreateEncryptedCSV(t, tempDir, "id_pk_delete.csv", deleteColumns, deleteRecords, deleteKey)
+
+	batchResp, err = srv.WriteBatch(t.Context(), &pb.WriteBatchRequest{
+		Configuration: config,
+		SchemaName:    schema,
+		Table:         table,
+		DeleteFiles:   []string{deleteFile},
+		Keys:          map[string][]byte{deleteFile: deleteKey},
+		FileParams:    testframework.GetTestFileParams(),
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, batchResp)
+	success, ok = batchResp.Response.(*pb.WriteBatchResponse_Success)
+	require.True(t, ok, "Expected WriteBatch success response")
+	require.True(t, success.Success)
+
+	// Verify delete worked correctly - should have 2 records remaining
+	testframework.AssertRecordCount(t, config, "test", schema, table.Name, 2)
+
+	// Verify remaining records still have array-based IDs
+	result, err = surrealdb.Query[[]map[string]interface{}](ctx, db, "SELECT * FROM products ORDER BY id", nil)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	dbRecords = (*result)[0].Result
+	require.Len(t, dbRecords, 2)
+
+	require.Equal(t, expectedID1, dbRecords[0]["id"], "Record ID should remain products:[1] after delete")
+	require.Equal(t, expectedID3, dbRecords[1]["id"], "Record ID should remain products:[3] after delete")
+
+	// Products 1 and 3 should still exist with their updated values
+	require.Equal(t, "Product A Updated", dbRecords[0]["name"])
+	require.Equal(t, "Product C Updated", dbRecords[1]["name"])
+}
+
 func TestWriteBatch_FailureEmptyCSV(t *testing.T) {
 	tempDir, cleanup := setupWriteBatchTest(t)
 	defer cleanup()
@@ -792,4 +969,3 @@ func TestWriteBatch_FailureEmptyCSV(t *testing.T) {
 	// Verify no records were inserted
 	testframework.AssertRecordCount(t, config, "test", schema, table.Name, 0)
 }
-

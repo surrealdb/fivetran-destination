@@ -133,17 +133,14 @@ func (s *Server) batchUpdate(ctx context.Context, db *surrealdb.DB, fields map[s
 		//
 		// thing := fmt.Sprintf("%s:%s", req.Table.Name, values["_fivetran_id"])
 
-		cols, vals, err := s.getPKColumnsAndValues(values, req.Table, fields)
+		_, vals, err := s.getPKColumnsAndValues(values, req.Table, fields)
 		if err != nil {
 			return fmt.Errorf("unable to get primary key columns and values for record %v: %w", values, err)
 		}
 
-		var thing models.RecordID
-		if len(cols) == 1 {
-			thing = models.NewRecordID(req.Table.Name, vals[0])
-		} else {
-			thing = models.NewRecordID(req.Table.Name, vals)
-		}
+		// Always use array-based IDs (even for single-column primary keys)
+		// because our connector defines all table IDs as TYPE array<any>
+		thing := models.NewRecordID(req.Table.Name, vals)
 
 		var hasUnmodifiedColumns bool
 
@@ -154,6 +151,15 @@ func (s *Server) batchUpdate(ctx context.Context, db *surrealdb.DB, fields map[s
 					s.LogDebug("Skipping unmodified column", "column", k, "value", v)
 				}
 				hasUnmodifiedColumns = true
+				continue
+			}
+
+			// Skip "id" column - it's already specified in the RecordID
+			// Other primary key columns should be included as regular fields
+			if k == "id" {
+				if s.Debugging() {
+					s.LogDebug("Skipping id column in update")
+				}
 				continue
 			}
 
@@ -244,9 +250,16 @@ func (s *Server) batchDelete(ctx context.Context, db *surrealdb.DB, fields map[s
 			values[column] = record[i]
 		}
 
-		thing := models.NewRecordID(req.Table.Name, values["_fivetran_id"])
+		_, vals, err := s.getPKColumnsAndValues(values, req.Table, fields)
+		if err != nil {
+			return fmt.Errorf("unable to get primary key columns and values for record %v: %w", values, err)
+		}
 
-		_, err := surrealdb.Delete[any](ctx, db, thing)
+		// Always use array-based IDs (even for single-column primary keys)
+		// because our connector defines all table IDs as TYPE array<any>
+		thing := models.NewRecordID(req.Table.Name, vals)
+
+		_, err = surrealdb.Delete[any](ctx, db, thing)
 		if err != nil {
 			if s.metrics != nil {
 				s.metrics.DBWriteError()
