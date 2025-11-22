@@ -213,6 +213,19 @@ func (s *Server) DescribeTable(ctx context.Context, req *pb.DescribeTableRequest
 		s.LogDebug("infoForTable result", "table_info", tb)
 	}
 
+	if len(tb.Columns) == 0 {
+		// SurrealDB `INFO FOR TABLE` returns table info with empty events/fields/indexes/lives if
+		// the table does not exist yet, or the table has no fields defined yet.
+		// Assuming the table this connector should have 1 or more fields defined,
+		// we treat either case as table not found.
+		return &pb.DescribeTableResponse{
+			// notfound, table, warning, task
+			Response: &pb.DescribeTableResponse_NotFound{
+				NotFound: true,
+			},
+		}, nil
+	}
+
 	ftColumns, err := s.columnsFromSurrealToFivetran(tb.Columns)
 	if err != nil {
 		return &pb.DescribeTableResponse{
