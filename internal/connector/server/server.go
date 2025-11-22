@@ -10,6 +10,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/surrealdb/fivetran-destination/internal/connector/log"
 	"github.com/surrealdb/fivetran-destination/internal/connector/metrics"
+	"github.com/surrealdb/fivetran-destination/internal/connector/server/migrator"
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
 	_ "google.golang.org/grpc/encoding/gzip"
 )
@@ -348,6 +349,19 @@ func (s *Server) AlterTable(ctx context.Context, req *pb.AlterTableRequest) (*pb
 				},
 			},
 		}, err
+	}
+
+	if req.DropColumns {
+		m := migrator.New(db, s.Logging)
+		if err := m.RemoveSurrealDBFieldsNotInFivetranTable(ctx, db, req.SchemaName, req.Table); err != nil {
+			return &pb.AlterTableResponse{
+				Response: &pb.AlterTableResponse_Warning{
+					Warning: &pb.Warning{
+						Message: err.Error(),
+					},
+				},
+			}, err
+		}
 	}
 
 	tbInfo, err := s.infoForTable(ctx, req.SchemaName, req.Table.Name, req.Configuration)
