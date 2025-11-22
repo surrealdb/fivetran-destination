@@ -43,7 +43,7 @@ func TestBatchCopyRecordsWithNewIDs_SimplifyIDs(t *testing.T) {
 
 	// Copy records with simplified IDs (remove timestamp component)
 	idExpression := "array::slice(record::id(id), 0, 1)"
-	err = migrator.BatchCopyRecordsWithNewIDs(ctx, "source", "*", "dest", idExpression, "*", 1000)
+	err = migrator.BatchCopyRecordsWithNewIDs(ctx, "source", "*", "dest", idExpression, "*", 1000, nil)
 	require.NoError(t, err, "BatchCopyRecordsWithNewIDs failed")
 
 	// Verify all records were copied with simplified IDs
@@ -110,7 +110,7 @@ func TestBatchCopyRecordsWithNewIDs_WithFieldOmit(t *testing.T) {
 	// Copy records, omitting secret and timestamp, and simplifying IDs
 	idExpression := "array::slice(record::id(id), 0, 1)"
 	insertedFields := "* OMIT secret, timestamp"
-	err = migrator.BatchCopyRecordsWithNewIDs(ctx, "source", "*", "dest", idExpression, insertedFields, 1000)
+	err = migrator.BatchCopyRecordsWithNewIDs(ctx, "source", "*", "dest", idExpression, insertedFields, 1000, nil)
 	require.NoError(t, err, "BatchCopyRecordsWithNewIDs failed")
 
 	// Verify records were copied without secret and timestamp fields
@@ -161,7 +161,7 @@ func TestBatchCopyRecordsWithNewIDs_SmallBatchSize(t *testing.T) {
 
 	// Copy with small batch size (2 records per batch) and simplified IDs
 	idExpression := "array::slice(record::id(id), 0, 1)"
-	err = migrator.BatchCopyRecordsWithNewIDs(ctx, "source", "*", "dest", idExpression, "*", 2)
+	err = migrator.BatchCopyRecordsWithNewIDs(ctx, "source", "*", "dest", idExpression, "*", 2, nil)
 	require.NoError(t, err, "BatchCopyRecordsWithNewIDs failed")
 
 	// Verify all 10 records were copied
@@ -206,7 +206,7 @@ func TestBatchCopyRecordsWithNewIDs_EmptyTable(t *testing.T) {
 
 	// Copy from empty table
 	idExpression := "array::slice(record::id(id), 0, 1)"
-	err = migrator.BatchCopyRecordsWithNewIDs(ctx, "source", "*", "dest", idExpression, "*", 1000)
+	err = migrator.BatchCopyRecordsWithNewIDs(ctx, "source", "*", "dest", idExpression, "*", 1000, nil)
 	require.NoError(t, err, "BatchCopyRecordsWithNewIDs on empty table should not fail")
 
 	// Verify dest table is still empty
@@ -251,7 +251,7 @@ func TestBatchCopyRecordsWithNewIDs_ExtendIDs(t *testing.T) {
 
 	// Copy records with extended IDs (add timestamp to ID)
 	idExpression := "array::add(record::id(id), timestamp)"
-	err = migrator.BatchCopyRecordsWithNewIDs(ctx, "source", "*", "dest", idExpression, "*", 1000)
+	err = migrator.BatchCopyRecordsWithNewIDs(ctx, "source", "*", "dest", idExpression, "*", 1000, nil)
 	require.NoError(t, err, "BatchCopyRecordsWithNewIDs failed")
 
 	// Verify all records were copied with extended IDs

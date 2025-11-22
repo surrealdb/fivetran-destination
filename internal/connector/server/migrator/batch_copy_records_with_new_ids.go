@@ -18,6 +18,7 @@ import (
 //   - idExpression: SurrealQL expression to compute new ID (e.g., "array::slice(record::id(id), 0, 2)")
 //   - insertedFields: fields to INSERT into destination (e.g., "*", "field1, field2")
 //   - batchSize: number of records per batch
+//   - additionalVars: additional query parameters to pass to the query (can be nil)
 //
 // This function is useful when you need to copy records while changing their ID structure.
 // Unlike BatchCopyRecords, this tracks the original source IDs for pagination rather than
@@ -27,7 +28,8 @@ import (
 //   - Copying with simplified IDs: idExpression = "array::slice(record::id(id), 0, 1)"
 //   - Copying with extended IDs: idExpression = "array::add(record::id(id), $timestamp)"
 //   - Copying with field transformations: insertedFields = "*, computed_field"
-func (m *Migrator) BatchCopyRecordsWithNewIDs(ctx context.Context, fromTable, selectedFields, toTable, idExpression, insertedFields string, batchSize int) error {
+//   - Using additional variables: additionalVars = map[string]any{"now": time.Now(), "max": 100}
+func (m *Migrator) BatchCopyRecordsWithNewIDs(ctx context.Context, fromTable, selectedFields, toTable, idExpression, insertedFields string, batchSize int, additionalVars map[string]any) error {
 	if batchSize <= 0 {
 		batchSize = 1000
 	}
@@ -49,10 +51,17 @@ func (m *Migrator) BatchCopyRecordsWithNewIDs(ctx context.Context, fromTable, se
 	startID := models.NewRecordID(fromTable, []any{})
 
 	for {
-		results, err := surrealdb.Query[map[string]any](ctx, m.db, copyQuery, map[string]any{
+		// Build query parameters by merging additionalVars with pagination params
+		queryParams := map[string]any{
 			"start_id":   startID,
 			"batch_size": batchSize,
-		})
+		}
+		// Merge additional variables if provided
+		for k, v := range additionalVars {
+			queryParams[k] = v
+		}
+
+		results, err := surrealdb.Query[map[string]any](ctx, m.db, copyQuery, queryParams)
 		if err != nil {
 			return fmt.Errorf("batch copy with new IDs failed: %w", err)
 		}
