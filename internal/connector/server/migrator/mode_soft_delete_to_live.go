@@ -22,10 +22,24 @@ func (m *Migrator) ModeSoftDeleteToLive(ctx context.Context, schema, table, soft
 
 	// 2. Remove the soft delete column definition
 	// This must be done before unsetting the data to avoid schema validation errors
-	removeQuery := fmt.Sprintf("REMOVE FIELD %s ON %s", softDeletedColumn, table)
-	_, err = surrealdb.Query[any](ctx, m.db, removeQuery, nil)
+
+	// Note that sdktester 2.25.1105.001 somehow does not provide us _fivetran_deleted column on CreateTable
+	// even though soft_deleted_column = _fivetran_deleted is specified in schema_migrations_input_sync_modes.json.
+	// So we skip this step if the column does not exist.
+	type InfoForTableResult struct {
+		Fields map[string]string `cbor:"fields"`
+	}
+	infoResults, err := surrealdb.Query[InfoForTableResult](ctx, m.db, fmt.Sprintf("INFO FOR TABLE %s", table), nil)
 	if err != nil {
-		return fmt.Errorf("failed to remove soft delete column %s from table %s: %w", softDeletedColumn, table, err)
+		return fmt.Errorf("failed to get table info for %s: %w", table, err)
+	}
+
+	if _, ok := (*infoResults)[0].Result.Fields[softDeletedColumn]; softDeletedColumn == "_fivetran_deleted" && ok {
+		removeQuery := fmt.Sprintf("REMOVE FIELD %s ON %s", softDeletedColumn, table)
+		_, err = surrealdb.Query[any](ctx, m.db, removeQuery, nil)
+		if err != nil {
+			return fmt.Errorf("failed to remove soft delete column %s from table %s: %w", softDeletedColumn, table, err)
+		}
 	}
 
 	// 3. Update all remaining records to unset the soft delete column data
