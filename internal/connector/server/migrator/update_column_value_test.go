@@ -18,8 +18,8 @@ func TestUpdateColumnValue_BasicUpdate(t *testing.T) {
 	// Create test table
 	_, err := surrealdb.Query[any](ctx, db, `
 		DEFINE TABLE users SCHEMAFULL;
-		DEFINE FIELD name ON users TYPE string;
-		DEFINE FIELD status ON users TYPE string;
+		DEFINE FIELD name ON users TYPE string COMMENT '{"ft_index":0,"ft_data_type":13,"ft_primary_key":false}';
+		DEFINE FIELD status ON users TYPE string COMMENT '{"ft_index":1,"ft_data_type":13,"ft_primary_key":false}';
 	`, nil)
 	require.NoError(t, err, "Failed to create table")
 
@@ -57,8 +57,8 @@ func TestUpdateColumnValue_UpdateToNull(t *testing.T) {
 	// Create test table with optional field
 	_, err := surrealdb.Query[any](ctx, db, `
 		DEFINE TABLE products SCHEMAFULL;
-		DEFINE FIELD name ON products TYPE string;
-		DEFINE FIELD description ON products TYPE option<string>;
+		DEFINE FIELD name ON products TYPE string COMMENT '{"ft_index":0,"ft_data_type":13,"ft_primary_key":false}';
+		DEFINE FIELD description ON products TYPE option<string> COMMENT '{"ft_index":1,"ft_data_type":13,"ft_primary_key":false}';
 	`, nil)
 	require.NoError(t, err, "Failed to create table")
 
@@ -95,8 +95,8 @@ func TestUpdateColumnValue_UpdateEmptyString(t *testing.T) {
 	// Create test table
 	_, err := surrealdb.Query[any](ctx, db, `
 		DEFINE TABLE items SCHEMAFULL;
-		DEFINE FIELD name ON items TYPE string;
-		DEFINE FIELD category ON items TYPE option<string>;
+		DEFINE FIELD name ON items TYPE string COMMENT '{"ft_index":0,"ft_data_type":13,"ft_primary_key":false}';
+		DEFINE FIELD category ON items TYPE option<string> COMMENT '{"ft_index":1,"ft_data_type":13,"ft_primary_key":false}';
 	`, nil)
 	require.NoError(t, err, "Failed to create table")
 
@@ -120,7 +120,7 @@ func TestUpdateColumnValue_UpdateEmptyString(t *testing.T) {
 	require.Len(t, records, 2, "Expected 2 records")
 
 	for _, record := range records {
-		assert.Nil(t, record["category"], "Category should be NULL/NONE")
+		assert.Equal(t, "", record["category"], "Category should be empty string")
 	}
 }
 
@@ -133,8 +133,8 @@ func TestUpdateColumnValue_EmptyTable(t *testing.T) {
 	// Create empty test table
 	_, err := surrealdb.Query[any](ctx, db, `
 		DEFINE TABLE empty_table SCHEMAFULL;
-		DEFINE FIELD name ON empty_table TYPE string;
-		DEFINE FIELD value ON empty_table TYPE string;
+		DEFINE FIELD name ON empty_table TYPE string COMMENT '{"ft_index":0,"ft_data_type":13,"ft_primary_key":false}';
+		DEFINE FIELD value ON empty_table TYPE string COMMENT '{"ft_index":1,"ft_data_type":13,"ft_primary_key":false}';
 	`, nil)
 	require.NoError(t, err, "Failed to create table")
 
@@ -160,9 +160,9 @@ func TestUpdateColumnValue_WithRecordID(t *testing.T) {
 	// Create test table
 	_, err := surrealdb.Query[any](ctx, db, `
 		DEFINE TABLE orders SCHEMAFULL;
-		DEFINE FIELD customer ON orders TYPE string;
-		DEFINE FIELD status ON orders TYPE string;
-		DEFINE FIELD total ON orders TYPE number;
+		DEFINE FIELD customer ON orders TYPE string COMMENT '{"ft_index":0,"ft_data_type":13,"ft_primary_key":false}';
+		DEFINE FIELD status ON orders TYPE string COMMENT '{"ft_index":1,"ft_data_type":13,"ft_primary_key":false}';
+		DEFINE FIELD total ON orders TYPE number COMMENT '{"ft_index":2,"ft_data_type":3,"ft_primary_key":false}';
 	`, nil)
 	require.NoError(t, err, "Failed to create table")
 
@@ -205,8 +205,8 @@ func TestUpdateColumnValue_LowercaseNull(t *testing.T) {
 	// Create test table
 	_, err := surrealdb.Query[any](ctx, db, `
 		DEFINE TABLE test_null SCHEMAFULL;
-		DEFINE FIELD name ON test_null TYPE string;
-		DEFINE FIELD optional_field ON test_null TYPE option<string>;
+		DEFINE FIELD name ON test_null TYPE string COMMENT '{"ft_index":0,"ft_data_type":13,"ft_primary_key":false}';
+		DEFINE FIELD optional_field ON test_null TYPE option<string> COMMENT '{"ft_index":1,"ft_data_type":13,"ft_primary_key":false}';
 	`, nil)
 	require.NoError(t, err, "Failed to create table")
 
