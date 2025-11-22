@@ -202,11 +202,25 @@ func ColumnsFromSurrealToFivetran(sColumns []ColumnInfo) ([]*pb.Column, error) {
 	var ftColumns []*pb.Column
 
 	for _, c := range sColumns {
-		ftColumns = append(ftColumns, &pb.Column{
+		col := &pb.Column{
 			Name:       c.Name,
 			Type:       c.FtType,
 			PrimaryKey: c.FtPrimaryKey,
-		})
+		}
+
+		// Add decimal parameters if this is a decimal column
+		if c.FtType == pb.DataType_DECIMAL && c.DecimalPrecision > 0 {
+			col.Params = &pb.DataTypeParams{
+				Params: &pb.DataTypeParams_Decimal{
+					Decimal: &pb.DecimalParams{
+						Precision: c.DecimalPrecision,
+						Scale:     0, // Scale is not currently stored in ColumnInfo
+					},
+				},
+			}
+		}
+
+		ftColumns = append(ftColumns, col)
 	}
 
 	return ftColumns, nil
