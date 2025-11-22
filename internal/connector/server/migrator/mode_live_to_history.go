@@ -55,7 +55,7 @@ func (m *Migrator) ModeLiveToHistory(ctx context.Context, schema, table string) 
 	idExpression := "array::add(record::id(id), _fivetran_start)"
 	insertedFields := "*"
 
-	err = m.BatchUpdateIDs(ctx, table, "*", idExpression, insertedFields, batchSize)
+	err = m.BatchUpdateIDs(ctx, table, "*", idExpression, insertedFields, batchSize, nil)
 	if err != nil {
 		return fmt.Errorf("failed to update record IDs: %w", err)
 	}

@@ -198,7 +198,7 @@ func (m *Migrator) ModeHistoryToSoftDelete(ctx context.Context, schema, table, s
 	idExpression := "array::slice(record::id(id), 0, array::len(record::id(id)) - 1)"
 	insertedFields := fmt.Sprintf("NOT(_fivetran_active) AS %s, * OMIT _fivetran_start, _fivetran_end, _fivetran_active", softDeletedColumn)
 
-	err = m.BatchUpdateIDs(ctx, table, "*", idExpression, insertedFields, batchSize)
+	err = m.BatchUpdateIDs(ctx, table, "*", idExpression, insertedFields, batchSize, nil)
 	if err != nil {
 		return fmt.Errorf("failed to update record IDs: %w", err)
 	}
