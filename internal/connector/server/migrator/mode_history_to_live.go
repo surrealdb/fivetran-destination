@@ -15,14 +15,21 @@ import (
 func (m *Migrator) ModeHistoryToLive(ctx context.Context, schema, table string, keepDeletedRows bool) error {
 	const batchSize = 1000
 
-	// 1. If keepDeletedRows is false, delete all non-active records
-	if !keepDeletedRows {
-		deleteQuery := fmt.Sprintf("DELETE FROM %s WHERE _fivetran_active = false", table)
-		_, err := surrealdb.Query[any](ctx, m.db, deleteQuery, nil)
-		if err != nil {
-			return fmt.Errorf("failed to delete inactive records from %s: %w", table, err)
-		}
+	// 1. If keepDeletedRows is false, delete all non-active records (as explained by Fivetran SDK docs)
+	// if !keepDeletedRows {
+	//
+	// Note: We presume we should always delete inactive records when converting to live mode,
+	// because otherwise the inactive and active records would conflict in live mode due to ID duplication.
+	// Let's say we have a record with ID [pk1, pk2, _fivetran_start1] that was inactive and
+	// another record with ID [pk1, pk2, _fivetran_start2] that is active.
+	// When converting to live mode, both would map to the same ID [pk1, pk2] which is not allowed.
+	// Therefore, we must remove the inactive records to maintain unique IDs in live mode.
+	deleteQuery := fmt.Sprintf("DELETE FROM %s WHERE _fivetran_active = false", table)
+	_, err := surrealdb.Query[any](ctx, m.db, deleteQuery, nil)
+	if err != nil {
+		return fmt.Errorf("failed to delete inactive records from %s: %w", table, err)
 	}
+	// }
 
 	// 2. Remove history mode field definitions from schema
 	for _, field := range []string{"_fivetran_start", "_fivetran_end", "_fivetran_active"} {
@@ -37,9 +44,7 @@ func (m *Migrator) ModeHistoryToLive(ctx context.Context, schema, table string, 
 	// ID transformation: remove _fivetran_start from array-based ID [pk1, pk2, ..., _fivetran_start] -> [pk1, pk2, ...]
 	idExpression := "array::slice(record::id(id), 0, array::len(record::id(id)) - 1)"
 	insertedFields := "* OMIT _fivetran_start, _fivetran_end, _fivetran_active"
-
-	err := m.BatchUpdateIDs(ctx, table, "*", idExpression, insertedFields, batchSize, nil)
-	if err != nil {
+	if err := m.BatchUpdateIDs(ctx, table, "*", idExpression, insertedFields, batchSize, nil); err != nil {
 		return fmt.Errorf("failed to update record IDs: %w", err)
 	}
 
