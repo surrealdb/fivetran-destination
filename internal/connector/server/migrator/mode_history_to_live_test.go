@@ -155,64 +155,67 @@ func TestModeHistoryToLive_DeleteInactiveRecords(t *testing.T) {
 	assert.NotContains(t, names, "Deleted Product")
 }
 
-func TestModeHistoryToLive_KeepDeletedRows(t *testing.T) {
-	ctx := t.Context()
-	namespace := testNamespace(t)
+// We currently do not respect keepDeletedRows in ModeHistoryToLive,
+// because it would result in duplicate primary keys in live mode.
+//
+// func TestModeHistoryToLive_KeepDeletedRows(t *testing.T) {
+// 	ctx := t.Context()
+// 	namespace := testNamespace(t)
 
-	db, migrator := testSetup(t, namespace)
+// 	db, migrator := testSetup(t, namespace)
 
-	// Create history-mode table
-	_, err := surrealdb.Query[any](ctx, db, `
-		DEFINE TABLE items SCHEMAFULL;
-		DEFINE FIELD id ON items TYPE array<any>;
-		DEFINE FIELD name ON items TYPE option<string>;
-		DEFINE FIELD _fivetran_synced ON items TYPE option<datetime>;
-		DEFINE FIELD _fivetran_start ON items TYPE option<datetime>;
-		DEFINE FIELD _fivetran_end ON items TYPE option<datetime>;
-		DEFINE FIELD _fivetran_active ON items TYPE option<bool>;
-	`, nil)
-	require.NoError(t, err, "Failed to create table")
+// 	// Create history-mode table
+// 	_, err := surrealdb.Query[any](ctx, db, `
+// 		DEFINE TABLE items SCHEMAFULL;
+// 		DEFINE FIELD id ON items TYPE array<any>;
+// 		DEFINE FIELD name ON items TYPE option<string>;
+// 		DEFINE FIELD _fivetran_synced ON items TYPE option<datetime>;
+// 		DEFINE FIELD _fivetran_start ON items TYPE option<datetime>;
+// 		DEFINE FIELD _fivetran_end ON items TYPE option<datetime>;
+// 		DEFINE FIELD _fivetran_active ON items TYPE option<bool>;
+// 	`, nil)
+// 	require.NoError(t, err, "Failed to create table")
 
-	// Insert mix of active and inactive records
-	startTime := models.CustomDateTime{Time: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}
-	endTimeMax := models.CustomDateTime{Time: time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)}
-	endTimeDeleted := models.CustomDateTime{Time: time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC)}
+// 	// Insert mix of active and inactive records
+// 	startTime := models.CustomDateTime{Time: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}
+// 	endTimeMax := models.CustomDateTime{Time: time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)}
+// 	endTimeDeleted := models.CustomDateTime{Time: time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC)}
 
-	_, err = surrealdb.Query[any](ctx, db, `
-		CREATE items:['item1', d'2024-01-01T00:00:00Z'] SET name = 'Active Item', _fivetran_synced = $synced, _fivetran_start = $start, _fivetran_end = $end_max, _fivetran_active = true;
-		CREATE items:['item2', d'2024-01-01T00:00:00Z'] SET name = 'Deleted Item', _fivetran_synced = $synced, _fivetran_start = $start, _fivetran_end = $end_deleted, _fivetran_active = false;
-	`, map[string]any{
-		"synced":      startTime,
-		"start":       startTime,
-		"end_max":     endTimeMax,
-		"end_deleted": endTimeDeleted,
-	})
-	require.NoError(t, err, "Failed to insert data")
+// 	_, err = surrealdb.Query[any](ctx, db, `
+// 		CREATE items:['item1', d'2024-01-01T00:00:00Z'] SET name = 'Active Item', _fivetran_synced = $synced, _fivetran_start = $start, _fivetran_end = $end_max, _fivetran_active = true;
+// 		CREATE items:['item2', d'2024-01-01T00:00:00Z'] SET name = 'Deleted Item', _fivetran_synced = $synced, _fivetran_start = $start, _fivetran_end = $end_deleted, _fivetran_active = false;
+// 	`, map[string]any{
+// 		"synced":      startTime,
+// 		"start":       startTime,
+// 		"end_max":     endTimeMax,
+// 		"end_deleted": endTimeDeleted,
+// 	})
+// 	require.NoError(t, err, "Failed to insert data")
 
-	// Convert to live mode with keepDeletedRows = true
-	err = migrator.ModeHistoryToLive(ctx, namespace, "items", true)
-	require.NoError(t, err, "ModeHistoryToLive failed")
+// 	// Convert to live mode with keepDeletedRows = true
+// 	err = migrator.ModeHistoryToLive(ctx, namespace, "items", true)
+// 	require.NoError(t, err, "ModeHistoryToLive failed")
 
-	// Verify all records remain (including inactive)
-	results, err := surrealdb.Query[[]map[string]any](ctx, db, "SELECT * FROM items ORDER BY id", nil)
-	require.NoError(t, err, "Failed to query table")
-	require.NotNil(t, results)
-	require.NotEmpty(t, *results)
-	records := (*results)[0].Result
-	require.Len(t, records, 2, "Expected 2 records (all kept)")
+// 	// Verify all records remain (including inactive)
+// 	results, err := surrealdb.Query[[]map[string]any](ctx, db, "SELECT * FROM items ORDER BY id", nil)
+// 	require.NoError(t, err, "Failed to query table")
+// 	require.NotNil(t, results)
+// 	require.NotEmpty(t, *results)
+// 	records := (*results)[0].Result
+// 	require.Len(t, records, 2, "Expected 2 records (all kept)")
 
-	// Verify both records exist
-	names := []string{records[0]["name"].(string), records[1]["name"].(string)}
-	assert.Contains(t, names, "Active Item")
-	assert.Contains(t, names, "Deleted Item")
+// 	// Verify both records exist
+// 	names := []string{records[0]["name"].(string), records[1]["name"].(string)}
+// 	assert.Contains(t, names, "Active Item")
+// 	assert.Contains(t, names, "Deleted Item")
 
-	// Verify history fields removed from both
-	for _, record := range records {
-		assert.NotContains(t, record, "_fivetran_start")
-		assert.NotContains(t, record, "_fivetran_end")
-		assert.NotContains(t, record, "_fivetran_active")
-	}
-}
+// 	// Verify history fields removed from both
+// 	for _, record := range records {
+// 		assert.NotContains(t, record, "_fivetran_start")
+// 		assert.NotContains(t, record, "_fivetran_end")
+// 		assert.NotContains(t, record, "_fivetran_active")
+// 	}
+// }
 
 func TestModeHistoryToLive_EmptyTable(t *testing.T) {
 	ctx := t.Context()
