@@ -19,6 +19,11 @@ import (
 // 3. UPDATE prior active records: _fivetran_end = operation_timestamp - 1ms, _fivetran_active = FALSE
 //
 // This follows a similar pattern to ADD_COLUMN_IN_HISTORY_MODE but sets the column to NONE.
+//
+// Additionally, we remove the SurrealDB field definition to hide the dropped column from DescribeTable results,
+// as Fivetran expects dropped columns to not be returned. All historical data values are preserved in existing records.
+// To be precise, we observed the Fivetran sdktester 2.25.1105.001 bailed out if the dropped column was still present
+// after this operation using schema_migrations_input_sync_modes.json.
 func (m *Migrator) DropColumnInHistoryMode(ctx context.Context, schema, table, column string, operationTimestamp time.Time) error {
 	// 1. Validate table has active records and get max(_fivetran_start)
 	type MaxStartResult struct {
@@ -86,6 +91,14 @@ func (m *Migrator) DropColumnInHistoryMode(ctx context.Context, schema, table, c
 	})
 	if err != nil {
 		return fmt.Errorf("failed to deactivate previous active records: %w", err)
+	}
+
+	// 5. Remove the field definition from the table schema
+	// This hides the column from DescribeTable results while preserving all historical values
+	removeFieldQuery := fmt.Sprintf("REMOVE FIELD %s ON %s", column, table)
+	_, err = surrealdb.Query[any](ctx, m.db, removeFieldQuery, nil)
+	if err != nil {
+		return fmt.Errorf("failed to remove field definition for column %s: %w", column, err)
 	}
 
 	m.LogInfo("Dropped column in history mode",
