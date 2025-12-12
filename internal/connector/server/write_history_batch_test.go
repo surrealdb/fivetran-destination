@@ -37,6 +37,21 @@ func buildHistoryTable() *pb.Table {
 	}, []string{"_fivetran_id", "_fivetran_start"})
 }
 
+// buildHistoryTableWithIdNameAmount creates a table definition with id, name, amount columns
+// This tests the edge case where the source data has a primary key column named "id",
+// which requires special handling due to SurrealDB's internal "id" field being a Record ID.
+func buildHistoryTableWithIdNameAmount() *pb.Table {
+	return testframework.NewTableDefinition("orders", map[string]pb.DataType{
+		"id":               pb.DataType_STRING,
+		"_fivetran_start":  pb.DataType_UTC_DATETIME,
+		"_fivetran_end":    pb.DataType_UTC_DATETIME,
+		"_fivetran_active": pb.DataType_BOOLEAN,
+		"_fivetran_synced": pb.DataType_UTC_DATETIME,
+		"name":             pb.DataType_STRING,
+		"amount":           pb.DataType_INT,
+	}, []string{"id", "_fivetran_start"})
+}
+
 // createHistoryRecords returns sample test data for history mode table
 // Records include _fivetran_start timestamps for version tracking
 func createHistoryRecords(startTime time.Time) ([]string, [][]string) {
@@ -825,4 +840,178 @@ func TestWriteHistoryBatch_FailureMissingFivetranIdOnlyInCSV(t *testing.T) {
 	warning, ok := batchResp.Response.(*pb.WriteBatchResponse_Warning)
 	require.True(t, ok, "Expected WriteHistoryBatch warning response")
 	require.NotEmpty(t, warning.Warning)
+}
+
+func TestWriteHistoryBatch_ReplaceUpdateDelete(t *testing.T) {
+	tempDir, cleanup := setupWriteHistoryBatchTest(t)
+	defer cleanup()
+
+	srv := New(zerolog.New(os.Stdout).Level(zerolog.DebugLevel))
+	config := testframework.GetSurrealDBConfig()
+	table := buildHistoryTableWithIdNameAmount()
+	schema := "test_writehistorybatch"
+
+	// Create table
+	_, err := srv.CreateTable(t.Context(), &pb.CreateTableRequest{
+		Configuration: config,
+		SchemaName:    schema,
+		Table:         table,
+	})
+	require.NoError(t, err)
+	defer testframework.DropTable(t, config, "test", schema, table.Name)
+
+	// Define timestamps
+	endTime := "9999-12-31T23:59:59Z"
+	syncTime := time.Now().UTC().Format(time.RFC3339)
+
+	startTime1 := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC) // T1: Initial replace
+	startTime2 := time.Date(2024, 1, 2, 12, 0, 0, 0, time.UTC) // T2: Update time
+	deleteTime := time.Date(2024, 1, 3, 12, 0, 0, 0, time.UTC) // T3: Delete synced time
+
+	columns := []string{"id", "_fivetran_start", "_fivetran_end", "_fivetran_active", "_fivetran_synced", "name", "amount"}
+
+	// 1. Replace CSV: Two entries (id1 and id2) at T1
+	replaceRecords := [][]string{
+		{"id1", startTime1.Format(time.RFC3339), endTime, "true", syncTime, "Alice", "100"},
+		{"id2", startTime1.Format(time.RFC3339), endTime, "true", syncTime, "Bob", "200"},
+	}
+	replaceKey, err := testframework.GenerateAESKey()
+	require.NoError(t, err)
+	replaceFile := testframework.CreateEncryptedCSV(t, tempDir, "replace.csv", columns, replaceRecords, replaceKey)
+
+	// 2. Update CSV: Update id1 at T2
+	// Uses "unmodifiedstring56789" for fields that should inherit values from previous version
+	updateRecords := [][]string{
+		{"id1", startTime2.Format(time.RFC3339), endTime, "true", syncTime, "Alice Updated", "unmodifiedstring56789"},
+	}
+	updateKey, err := testframework.GenerateAESKey()
+	require.NoError(t, err)
+	updateFile := testframework.CreateEncryptedCSV(t, tempDir, "update.csv", columns, updateRecords, updateKey)
+
+	// 3. Delete CSV: Delete id2 with synced time at T3
+	// Uses "nullstring01234" for null values (as per existing pattern)
+	deleteRecords := [][]string{
+		{"id2", "nullstring01234", deleteTime.Format(time.RFC3339), "false", deleteTime.Format(time.RFC3339), "nullstring01234", "nullstring01234"},
+	}
+	deleteKey, err := testframework.GenerateAESKey()
+	require.NoError(t, err)
+	deleteFile := testframework.CreateEncryptedCSV(t, tempDir, "delete.csv", columns, deleteRecords, deleteKey)
+
+	// Execute WriteHistoryBatch with all three file types
+	batchResp, err := srv.WriteHistoryBatch(t.Context(), &pb.WriteHistoryBatchRequest{
+		Configuration: config,
+		SchemaName:    schema,
+		Table:         table,
+		ReplaceFiles:  []string{replaceFile},
+		UpdateFiles:   []string{updateFile},
+		DeleteFiles:   []string{deleteFile},
+		Keys: map[string][]byte{
+			replaceFile: replaceKey,
+			updateFile:  updateKey,
+			deleteFile:  deleteKey,
+		},
+		FileParams: testframework.GetTestFileParams(),
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, batchResp)
+	success, ok := batchResp.Response.(*pb.WriteBatchResponse_Success)
+	require.True(t, ok, "Expected WriteHistoryBatch success response")
+	require.True(t, success.Success)
+
+	// ASSERTIONS
+
+	// 1. Verify total 3 rows
+	testframework.AssertRecordCount(t, config, "test", schema, table.Name, 3)
+
+	// Query all records for detailed verification
+	records := testframework.QueryTable(t, config, "test", schema, table.Name)
+
+	// Helper to extract the "id" column value from a RecordID
+	// SurrealDB returns "id" as a RecordID, not the raw column value
+	extractIdValue := func(record map[string]any) string {
+		idField, ok := record["id"]
+		if !ok {
+			return ""
+		}
+		rid, ok := idField.(models.RecordID)
+		if !ok {
+			return ""
+		}
+		idArr, ok := rid.ID.([]any)
+		if !ok || len(idArr) == 0 {
+			return ""
+		}
+		idStr, ok := idArr[0].(string)
+		if !ok {
+			return ""
+		}
+		return idStr
+	}
+
+	// Helper to find records by id and optionally _fivetran_start
+	findRecord := func(id string, startTime *time.Time) map[string]any {
+		for _, record := range records {
+			if extractIdValue(record) != id {
+				continue
+			}
+			if startTime == nil {
+				return record
+			}
+			ftStart, ok := record["_fivetran_start"].(models.CustomDateTime)
+			if ok && ftStart.Time.Equal(*startTime) {
+				return record
+			}
+		}
+		return nil
+	}
+
+	maxEndTime := time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
+
+	// 2. Verify id1 has 2 versions
+	id1Count := 0
+	for _, record := range records {
+		if extractIdValue(record) == "id1" {
+			id1Count++
+		}
+	}
+	require.Equal(t, 2, id1Count, "id1 should have 2 versions")
+
+	// 2a. Verify id1 original version (T1) is inactive with _fivetran_end = T2-1ms
+	id1Original := findRecord("id1", &startTime1)
+	require.NotNil(t, id1Original, "id1 original version should exist")
+	assert.Equal(t, false, id1Original["_fivetran_active"], "id1 original should be inactive")
+	assert.Equal(t, "Alice", id1Original["name"])
+	assert.Equal(t, uint64(100), id1Original["amount"])
+	// Verify _fivetran_end is T2-1ms (when the new version started)
+	id1OrigEnd := id1Original["_fivetran_end"].(models.CustomDateTime)
+	assert.Equal(t, startTime2.Add(-time.Millisecond), id1OrigEnd.Time, "id1 original _fivetran_end should be T2-1ms")
+
+	// 2b. Verify id1 updated version (T2) is active
+	id1Updated := findRecord("id1", &startTime2)
+	require.NotNil(t, id1Updated, "id1 updated version should exist")
+	assert.Equal(t, true, id1Updated["_fivetran_active"], "id1 updated should be active")
+	assert.Equal(t, "Alice Updated", id1Updated["name"])
+	assert.Equal(t, uint64(100), id1Updated["amount"]) // Unmodified - inherited from original
+	// Verify _fivetran_end is max time (still active)
+	id1UpdEnd := id1Updated["_fivetran_end"].(models.CustomDateTime)
+	assert.Equal(t, maxEndTime, id1UpdEnd.Time, "id1 updated _fivetran_end should be max time")
+
+	// 3. Verify id2 has exactly 1 row (deleted)
+	id2Count := 0
+	var id2Record map[string]any
+	for _, record := range records {
+		if extractIdValue(record) == "id2" {
+			id2Count++
+			id2Record = record
+		}
+	}
+	require.Equal(t, 1, id2Count, "id2 should have 1 row")
+
+	// 3a. Verify id2 is marked as deleted
+	assert.Equal(t, false, id2Record["_fivetran_active"], "id2 should be inactive (deleted)")
+
+	// 3b. Verify id2 _fivetran_end equals delete synced time
+	id2End := id2Record["_fivetran_end"].(models.CustomDateTime)
+	assert.Equal(t, deleteTime, id2End.Time, "id2 _fivetran_end should equal delete synced time")
 }
