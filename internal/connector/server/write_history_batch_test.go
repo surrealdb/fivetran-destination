@@ -959,7 +959,7 @@ func TestWriteHistoryBatch_ReplaceUpdateDelete(t *testing.T) {
 				return record
 			}
 			ftStart, ok := record["_fivetran_start"].(models.CustomDateTime)
-			if ok && ftStart.Time.Equal(*startTime) {
+			if ok && ftStart.Equal(*startTime) {
 				return record
 			}
 		}
