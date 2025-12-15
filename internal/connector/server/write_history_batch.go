@@ -348,7 +348,7 @@ func (s *Server) generateIdArray(values map[string]string, table *pb.Table, fiel
 }
 
 func (s *Server) generateIdArrayForDelete(values map[string]string, table *pb.Table, fields map[string]tablemapper.ColumnInfo, fivetranStartDefault *models.CustomDateTime) ([]any, error) {
-	_, vals, err := s.getPKColumnsAndValuesForDelete(values, table, fields)
+	_, vals, err := s.parsePrimaryKeyValuesExceptFivetranStart(values, table, fields)
 	if err != nil {
 		return nil, fmt.Errorf("generateIdArrayForDelete: unable to get primary key columns and values for record %v: %w", values, err)
 	}
@@ -448,128 +448,31 @@ func (s *Server) handleHistoryModeReplaceFiles(ctx context.Context, db *surreald
 	})
 }
 
-func (s *Server) getLatestFivetranStartInStr(ctx context.Context, db *surrealdb.DB, table *pb.Table, values map[string]string, fields map[string]tablemapper.ColumnInfo) (*models.CustomDateTime, error) {
-	vars := map[string]interface{}{
-		"tb": table.Name,
-	}
-
-	cols, vals, err := s.getPKColumnsAndValuesForDelete(values, table, fields)
+func (s *Server) selectLatestFivetranStart(ctx context.Context, db *surrealdb.DB, table *pb.Table, values map[string]string, fields map[string]tablemapper.ColumnInfo) (*models.CustomDateTime, error) {
+	pkCols, pkVals, err := s.parsePrimaryKeyValuesExceptFivetranStart(values, table, fields)
 	if err != nil {
 		return nil, fmt.Errorf("latest fivetran_start: %w", err)
 	}
 
-	// Check if "id" is one of the primary key columns (special case for SurrealDB)
-	hasIdColumn := false
-	for _, col := range cols {
-		if col == "id" {
-			hasIdColumn = true
-			break
-		}
-	}
-
-	var query string
-	var byID string // For error messages
-
-	if hasIdColumn {
-		// When "id" is a primary key column, we cannot use simple equality like `WHERE id = $id`
-		// because SurrealDB's `id` field contains the full RecordID (e.g., orders:['id1', timestamp]),
-		// not the raw column value 'id1'.
-		//
-		// We use range query on Record IDs for efficient lookup. SurrealDB is backed by an ordered
-		// key-value store, so range scans on Record IDs are fast (vs full table scan with record::id()).
-		//
-		// The query uses:
-		//   WHERE id >= type::thing($tb, $lower) AND id < type::thing($tb, $upper)
-		// Where $lower is [pk_values...] and $upper is [pk_values..., max_datetime]
-		//
-		// ORDER BY id.id DESC requires id.id in SELECT, so we add it explicitly.
-		//
-		// See surrealdb_recordid_test.go for comprehensive tests of this behavior.
-
-		// Build lower bound: PK values excluding _fivetran_start
-		var lowerBound []any
-		for i, col := range cols {
-			if col == "_fivetran_start" {
-				continue
-			}
-			lowerBound = append(lowerBound, vals[i])
-		}
-
-		// Build upper bound: PK values + max datetime
-		maxTime := time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
-		upperBound := make([]any, len(lowerBound)+1)
-		copy(upperBound, lowerBound)
-		upperBound[len(lowerBound)] = models.CustomDateTime{Time: maxTime}
-
-		vars["lower"] = lowerBound
-		vars["upper"] = upperBound
-
-		byID = "id >= type::thing($tb, $lower) AND id < type::thing($tb, $upper)"
-		// WORKAROUND: We need a subquery approach for the following reasons:
-		//
-		// 1. ORDER BY id DESC fails with "The underlying datastore does not support reversed scans"
-		//    when used directly with a WHERE clause on Record IDs. This error may not occur with
-		//    SurrealDB datastores that support reverse scans, but we use this universal approach
-		//    for broader compatibility.
-		//
-		// 2. ORDER BY id.id DESC works but returns id.id as [nil, nil] when used with type::fields,
-		//    making it impossible to extract the actual Record ID values needed.
-		//
-		// 3. Using id.id in WHERE clauses may result in full table scan behavior because it may not
-		//    be translated directly to the underlying key-value store's key, so it should be avoided
-		//    if possible.
-		//
-		// The subquery workaround computes the comparison in SELECT, filters on the result,
-		// and preserves the full Record ID for extraction.
-		query = `SELECT _fivetran_start, id FROM (
-			SELECT *,
-				id >= type::thing($tb, $lower) AS _gte,
-				id < type::thing($tb, $upper) AS _lt
-			FROM type::table($tb)
-		) WHERE _gte = true AND _lt = true ORDER BY id DESC LIMIT 1;`
-	} else {
-		// Standard case: use equality comparison on each PK column (except _fivetran_start)
-		var conds []string
-		for i, col := range cols {
-			if col == "_fivetran_start" {
-				// We don't want to include _fivetran_start in the WHERE clause
-				// to get the latest _fivetran_start
-				continue
-			}
-			vars[col] = vals[i]
-			conds = append(conds, fmt.Sprintf("%s = $%s", col, col))
-		}
-
-		byID = strings.Join(conds, " AND ")
-		query = fmt.Sprintf(
-			"SELECT _fivetran_start FROM type::table($tb) WHERE %s ORDER BY _fivetran_start DESC LIMIT 1;",
-			byID,
-		)
-	}
-
-	req, err := surrealdb.Query[[]map[string]interface{}](
-		ctx,
-		db,
-		query,
-		vars,
+	result, byID, err := s.selectLatestHistoryRecord(
+		ctx, db,
+		"_fivetran_start, id",
+		nil, // no extra vars needed
+		pkCols, pkVals,
+		table.Name,
 	)
-
 	if err != nil {
 		return nil, fmt.Errorf("unable to get latest _fivetran_start for %s where %s: %w", table.Name, byID, err)
 	}
 
-	if len(*req) == 0 {
-		return nil, fmt.Errorf("got empty query response while getting latest _fivetran_start for %s where %s", table.Name, byID)
-	}
-
-	if len((*req)[0].Result) == 0 {
+	if len(result) == 0 {
 		// This means there is no previous record to be deleted with the given primary key values.
 		// So we return nil to indicate that.
 		// The caller should handle this case appropriately, like skipping with some logging.
 		return nil, nil
 	}
 
-	ftStart := (*req)[0].Result[0]["_fivetran_start"]
+	ftStart := result[0]["_fivetran_start"]
 
 	latestFivetranStart, ok := ftStart.(models.CustomDateTime)
 	if !ok {
@@ -579,7 +482,7 @@ func (s *Server) getLatestFivetranStartInStr(ctx context.Context, db *surrealdb.
 	return &latestFivetranStart, nil
 }
 
-func (s *Server) getPKColumnsAndValuesForDelete(strValues map[string]string, table *pb.Table, fields map[string]tablemapper.ColumnInfo) ([]string, []any, error) {
+func (s *Server) parsePrimaryKeyValuesExceptFivetranStart(strValues map[string]string, table *pb.Table, fields map[string]tablemapper.ColumnInfo) ([]string, []any, error) {
 	var pkColumns []string
 	for _, c := range table.Columns {
 		if c.PrimaryKey && c.Name != "_fivetran_start" {
@@ -750,157 +653,28 @@ func (s *Server) handleHistoryModeUpdateFiles(ctx context.Context, db *surrealdb
 }
 
 func (s *Server) getPreviousValues(ctx context.Context, db *surrealdb.DB, fields []string, table *pb.Table, pkColumns []string, pkValues []any) (map[string]any, map[string]any, error) {
-	// Get the previous values for the thing (where the SurrealDB table field that corresponds to the source table's primary key column matches, and its fivetran_active is true)
+	// Get the previous values for the thing (where the SurrealDB table field that corresponds to the source table's primary key column matches)
 
-	// Check if "id" is one of the primary key columns (special case for SurrealDB)
-	hasIdColumn := false
-	for _, col := range pkColumns {
-		if col == "id" {
-			hasIdColumn = true
-			break
-		}
-	}
-
+	// Build the fields list: PK columns + content fields
 	idFieldsAndContentFields := make([]string, len(pkColumns)+len(fields))
 	copy(idFieldsAndContentFields, pkColumns)
 	copy(idFieldsAndContentFields[len(pkColumns):], fields)
 
-	vars := map[string]interface{}{
-		"tb":     table.Name,
-		"fields": idFieldsAndContentFields,
-	}
-
-	var query string
-	var byID string // For error messages
-
-	if hasIdColumn {
-		// When "id" is a primary key column, we cannot use simple equality like `WHERE id = $id`
-		// because SurrealDB's `id` field contains the full RecordID (e.g., orders:['id1', timestamp]),
-		// not the raw column value 'id1'.
-		//
-		// We use range query on Record IDs for efficient lookup. SurrealDB is backed by an ordered
-		// key-value store, so range scans on Record IDs are fast (vs full table scan with record::id()).
-		//
-		// The query uses:
-		//   WHERE id >= type::thing($tb, $lower) AND id < type::thing($tb, $upper)
-		// Where $lower is [pk_values...] and $upper is [pk_values..., max_datetime]
-		//
-		// ORDER BY id.id DESC requires id.id in SELECT, so we add it explicitly.
-		//
-		// See surrealdb_recordid_test.go for comprehensive tests of this behavior.
-
-		// Build lower bound: PK values excluding _fivetran_start
-		var lowerBound []any
-		for i, col := range pkColumns {
-			if col == "_fivetran_start" {
-				continue
-			}
-			lowerBound = append(lowerBound, pkValues[i])
-		}
-
-		// Build upper bound: PK values + max datetime
-		maxTime := time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
-		upperBound := make([]any, len(lowerBound)+1)
-		copy(upperBound, lowerBound)
-		upperBound[len(lowerBound)] = models.CustomDateTime{Time: maxTime}
-
-		vars["lower"] = lowerBound
-		vars["upper"] = upperBound
-
-		// Debug: Log pk values and their types
-		if s.Debugging() {
-			var lowerTypes, upperTypes []string
-			for _, v := range lowerBound {
-				lowerTypes = append(lowerTypes, fmt.Sprintf("%T", v))
-			}
-			for _, v := range upperBound {
-				upperTypes = append(upperTypes, fmt.Sprintf("%T", v))
-			}
-			s.LogDebug("getPreviousValues range query bounds",
-				"lower", lowerBound,
-				"lowerTypes", lowerTypes,
-				"upper", upperBound,
-				"upperTypes", upperTypes)
-		}
-
-		byID = "id >= type::thing($tb, $lower) AND id < type::thing($tb, $upper)"
-		// WORKAROUND: We need a subquery approach for the following reasons:
-		//
-		// 1. ORDER BY id DESC fails with "The underlying datastore does not support reversed scans"
-		//    when used directly with a WHERE clause on Record IDs. This error may not occur with
-		//    SurrealDB datastores that support reverse scans, but we use this universal approach
-		//    for broader compatibility.
-		//
-		// 2. ORDER BY id.id DESC works but returns id.id as [nil, nil] when used with type::fields,
-		//    making it impossible to extract the actual Record ID values needed.
-		//
-		// 3. Using id.id in WHERE clauses may result in full table scan behavior because it may not
-		//    be translated directly to the underlying key-value store's key, so it should be avoided
-		//    if possible.
-		//
-		// The subquery workaround computes the comparison in SELECT, filters on the result,
-		// and preserves the full Record ID for extraction.
-		// We select type::fields($fields) to get only the specific fields we need, plus id for PK extraction.
-		query = `SELECT type::fields($fields), id FROM (
-			SELECT *,
-				id >= type::thing($tb, $lower) AS _gte,
-				id < type::thing($tb, $upper) AS _lt
-			FROM type::table($tb)
-		) WHERE _gte = true AND _lt = true ORDER BY id DESC LIMIT 1;`
-
-	} else {
-		// Standard case: use equality comparison on each PK column (except _fivetran_start)
-		// This benefits from the Fivetran PK index
-		var conds []string
-		for i, col := range pkColumns {
-			if col == "_fivetran_start" {
-				// We exclude _fivetran_start from the WHERE clause
-				// because we want to get the latest record by _fivetran_start
-				continue
-			}
-			vars[col] = pkValues[i]
-			conds = append(conds, fmt.Sprintf("%s = $%s", col, col))
-		}
-
-		byID := strings.Join(conds, " AND ")
-
-		query = fmt.Sprintf(
-			// We once included `AND _fivetran_active = true`
-			// assuming there is only one active record at a time when Fivetran sends us an update.
-			//
-			// However, Fivetran may have one earliest start followed by an update both having the same timestamp T,
-			// which results in the former sets _fivetran_active=false for the record with timestamp less than or equal to T.
-			// If we had `AND _fivetran_active = true` in the query,
-			// the update with timestamp T would not find any active record,
-			// resulting in failure to get previous values for the unmodified fields.
-			//
-			// So we removed `AND _fivetran_active = true` from the query.
-
-			/// Also note that we include _fivetran_start in the selected fields
-			// because that's needed to use _fivetran_start in order-by clause
-			// I.e. it cannot find that _fivetran_start is included in $fields at query parsing time,
-			// resulting in an error.
-			// We explicitly (re)add _fivetran_start in the selected fields to prevent that.
-			"SELECT type::fields($fields), _fivetran_start FROM type::table($tb) WHERE %s ORDER BY _fivetran_start DESC LIMIT 1;",
-			byID,
-		)
-	}
-
-	req, err := surrealdb.Query[[]map[string]interface{}](
-		ctx,
-		db,
-		query,
-		vars,
+	// Use type::fields($fields), id for the query - this allows us to:
+	// 1. Get only the specific fields we need
+	// 2. Get the full RecordID for PK extraction
+	result, byID, err := s.selectLatestHistoryRecord(
+		ctx, db,
+		"type::fields($fields), id",
+		map[string]any{"fields": idFieldsAndContentFields},
+		pkColumns, pkValues,
+		table.Name,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("unable to get previous values for %s where %s: %w", table.Name, byID, err)
 	}
 
-	if len(*req) == 0 {
-		return nil, nil, fmt.Errorf("got empty query response while getting previous values found for %s where %s", table.Name, byID)
-	}
-
-	if len((*req)[0].Result) == 0 {
+	if len(result) == 0 {
 		// We assume the record has not been created yet.
 		// The caller should omit the unmodified fields from the vars,
 		// so that SurrealDB will create the record without those fields noted unmodified.
@@ -908,15 +682,22 @@ func (s *Server) getPreviousValues(ctx context.Context, db *surrealdb.DB, fields
 	}
 
 	// Both query paths use LIMIT 1, so we should get at most one result.
-	if len((*req)[0].Result) > 1 {
-		return nil, nil, fmt.Errorf("got multiple results while getting previous values found for %s where %s: %+v", table.Name, byID, (*req)[0].Result)
+	if len(result) > 1 {
+		return nil, nil, fmt.Errorf("got multiple results while getting previous values found for %s where %s: %+v", table.Name, byID, result)
 	}
 
 	fetchedPKValues := make(map[string]any)
 	fetchedContentValues := make(map[string]any)
-	for k, v := range (*req)[0].Result[0] {
+	for k, v := range result[0] {
 		// Skip temporary fields from subquery workaround
 		if k == "_gte" || k == "_lt" {
+			continue
+		}
+
+		// Skip SurrealDB's RecordID field unless "id" is explicitly a PK column.
+		// The query uses "type::fields($fields), id" which returns the RecordID.
+		// We only want to process "id" if it's actually a user-defined PK column.
+		if k == "id" && !hasIdPKColumn(pkColumns) {
 			continue
 		}
 
@@ -1024,7 +805,7 @@ func (s *Server) handleHistoryModeDeleteFiles(ctx context.Context, db *surrealdb
 		// identified by the primary key columns.
 		// That way, we can update the (1) fivetran_end to the time specified in the file,
 		// and (2) fivetran_active to false for the latest record.
-		latestFivetranStart, err := s.getLatestFivetranStartInStr(ctx, db, req.Table, values, fields)
+		latestFivetranStart, err := s.selectLatestFivetranStart(ctx, db, req.Table, values, fields)
 		if err != nil {
 			return fmt.Errorf("unable to get latest _fivetran_start for record %v: %w", values, err)
 		}
