@@ -180,7 +180,9 @@ func setupHistoryTestDB(t *testing.T) *surrealdb.DB {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		db.Close(ctx)
+		if err := db.Close(ctx); err != nil {
+			t.Logf("failed to close db: %v", err)
+		}
 	})
 
 	return db
