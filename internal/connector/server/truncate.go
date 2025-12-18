@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -43,6 +44,15 @@ func (s *Server) truncate(ctx context.Context, req *pb.TruncateRequest) (*pb.Tru
 
 	db, err := s.connectAndUse(ctx, cfg, req.SchemaName)
 	if err != nil {
+		// Check for token expiration - return Task instead of Warning
+		if errors.Is(err, ErrTokenExpired) {
+			s.LogSevere("Authentication token expired", err, "schema", req.SchemaName)
+			return &pb.TruncateResponse{
+				Response: &pb.TruncateResponse_Task{
+					Task: NewTokenExpiredTask(),
+				},
+			}, err
+		}
 		return &pb.TruncateResponse{
 			Response: &pb.TruncateResponse_Warning{
 				Warning: &pb.Warning{

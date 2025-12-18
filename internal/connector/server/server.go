@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -167,9 +168,16 @@ func (s *Server) Test(ctx context.Context, req *pb.TestRequest) (*pb.TestRespons
 	if _, err := s.connect(ctx, cfg); err != nil {
 		s.LogSevere("Failed to connect to database", err,
 			"config_name", req.Name)
+
+		// For token expiration, provide a more helpful failure message with guidance
+		failureMsg := err.Error()
+		if errors.Is(err, ErrTokenExpired) {
+			failureMsg = "Authentication token has expired.\n\n" + TokenExpiredTaskMessage()
+		}
+
 		return &pb.TestResponse{
 			Response: &pb.TestResponse_Failure{
-				Failure: err.Error(),
+				Failure: failureMsg,
 			},
 		}, err
 	}
@@ -198,6 +206,16 @@ func (s *Server) DescribeTable(ctx context.Context, req *pb.DescribeTableRequest
 					NotFound: true,
 				},
 			}, nil
+		}
+
+		// Check for token expiration - return Task instead of Warning
+		if errors.Is(err, ErrTokenExpired) {
+			s.LogSevere("Authentication token expired", err, "schema", req.SchemaName)
+			return &pb.DescribeTableResponse{
+				Response: &pb.DescribeTableResponse_Task{
+					Task: NewTokenExpiredTask(),
+				},
+			}, err
 		}
 
 		return &pb.DescribeTableResponse{
@@ -268,6 +286,15 @@ func (s *Server) CreateTable(ctx context.Context, req *pb.CreateTableRequest) (*
 
 	db, err := s.connectAndUse(ctx, cfg, req.SchemaName)
 	if err != nil {
+		// Check for token expiration - return Task instead of Warning
+		if errors.Is(err, ErrTokenExpired) {
+			s.LogSevere("Authentication token expired", err, "schema", req.SchemaName)
+			return &pb.CreateTableResponse{
+				Response: &pb.CreateTableResponse_Task{
+					Task: NewTokenExpiredTask(),
+				},
+			}, err
+		}
 		return &pb.CreateTableResponse{
 			// success, warning, task
 			Response: &pb.CreateTableResponse_Warning{
@@ -340,6 +367,15 @@ func (s *Server) AlterTable(ctx context.Context, req *pb.AlterTableRequest) (*pb
 
 	db, err := s.connectAndUse(ctx, cfg, req.SchemaName)
 	if err != nil {
+		// Check for token expiration - return Task instead of Warning
+		if errors.Is(err, ErrTokenExpired) {
+			s.LogSevere("Authentication token expired", err, "schema", req.SchemaName)
+			return &pb.AlterTableResponse{
+				Response: &pb.AlterTableResponse_Task{
+					Task: NewTokenExpiredTask(),
+				},
+			}, err
+		}
 		return &pb.AlterTableResponse{
 			Response: &pb.AlterTableResponse_Warning{
 				Warning: &pb.Warning{

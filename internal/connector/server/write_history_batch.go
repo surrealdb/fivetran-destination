@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -40,6 +41,15 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 
 	db, err := s.connectAndUse(ctx, cfg, req.SchemaName)
 	if err != nil {
+		// Check for token expiration - return Task instead of Warning
+		if errors.Is(err, ErrTokenExpired) {
+			s.LogSevere("Authentication token expired", err, "schema", req.SchemaName)
+			return &pb.WriteBatchResponse{
+				Response: &pb.WriteBatchResponse_Task{
+					Task: NewTokenExpiredTask(),
+				},
+			}, err
+		}
 		return &pb.WriteBatchResponse{
 			Response: &pb.WriteBatchResponse_Warning{
 				Warning: &pb.Warning{
