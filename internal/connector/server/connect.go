@@ -39,6 +39,9 @@ func (s *Server) connect(ctx context.Context, cfg config) (*surrealdb.DB, error)
 	// Just for anyone reading this, by HTTP and WebSocket endpoints, I mean `http://localhost:8000/rpc` and `ws://localhost:8000/rpc`
 	// respectively.
 	if err := db.Authenticate(ctx, token); err != nil {
+		if isTokenExpiredError(err) {
+			return nil, fmt.Errorf("%w: %v", ErrTokenExpired, err)
+		}
 		return nil, fmt.Errorf("failed to authenticate with SurrealDB: %w", err)
 	}
 
