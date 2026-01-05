@@ -1,0 +1,113 @@
+{
+   "create_table": {
+      "users": {
+         "columns": {
+            "id": "INT",
+            "name": "STRING",
+            "amount": "DOUBLE",
+            "status": "STRING",
+            "last_modified": "UTC_DATETIME"
+         },
+         "primary_key": [
+            "id"
+         ],
+         "history_mode": true
+      }
+   },
+   "ops": [
+      {
+         "upsert": {
+            "users": [
+               {
+                  "id": 1,
+                  "name": "Fivetran_original_1",
+                  "amount": 600.0,
+                  "status": "Done",
+                  "last_modified": "2025-02-12T16:15:00.000Z",
+                  "op_time": "2025-02-12T16:15:00Z"
+               },
+               {
+                  "id": 2,
+                  "name": "Fivetran_input_delete_test",
+                  "amount": 200.0,
+                  "status": "In progress",
+                  "last_modified": "2025-02-12T16:15:00.000Z",
+                  "op_time": "2025-02-12T16:15:00Z"
+               },
+               {
+                  "id": 3,
+                  "name": "Fivetran_input_update_test",
+                  "amount": 120.0,
+                  "status": "In progress",
+                  "last_modified": "2025-02-12T16:15:00.000Z",
+                  "op_time": "2025-02-12T16:15:00Z"
+               },
+               {
+                  "id": 4,
+                  "name": "Pinto 1",
+                  "amount": 400.0,
+                  "status": "Done",
+                  "last_modified": "2025-11-14T21:26:00.000Z",
+                  "op_time": "2025-11-14T21:26:00Z"
+               },
+               {
+                  "id": 5,
+                  "name": "Bhargav",
+                  "amount": 6000.0,
+                  "status": "Done",
+                  "last_modified": "2025-11-14T21:26:00.000Z",
+                  "op_time": "2025-11-14T21:26:00Z"
+               },
+               {
+                  "id": 6,
+                  "name": "Ken",
+                  "amount": 5600.0,
+                  "status": "Done",
+                  "last_modified": "2025-12-09T12:54:00.000Z",
+                  "op_time": "2025-12-09T12:54:00Z"
+               }
+            ]
+         }
+      },
+      {
+         "update": {
+            "users": [
+               {
+                  "id": 3,
+                  "status": "Done",
+                  "last_modified": "2025-12-19T10:00:00Z",
+                  "op_time": "2025-12-19T10:00:00Z"
+               }
+            ]
+         }
+      },
+      {
+         "upsert": {
+            "users": [
+               {
+                  "id": 7,
+                  "name": "Fivetran_input_insert_test",
+                  "amount": 180.0,
+                  "status": "To do",
+                  "last_modified": "2025-12-19T10:40:00Z",
+                  "op_time": "2025-12-19T10:40:00Z"
+               }
+            ]
+         }
+      },
+      {
+         "delete": {
+            "users": [
+               {
+                  "id": 2,
+                  "last_modified": "2025-12-19T11:00:00Z",
+                  "op_time": "2025-12-19T11:00:00Z"
+               }
+            ]
+         }
+      }
+   ],
+   "describe_table": [
+      "users"
+   ]
+}
