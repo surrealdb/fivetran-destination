@@ -312,6 +312,91 @@ func TestWriteHistoryBatch_SuccessReplaceAndUpdate(t *testing.T) {
 		})
 }
 
+func TestWriteHistoryBatch_SuccessReplaceAndDelete(t *testing.T) {
+	tempDir, cleanup := setupWriteHistoryBatchTest(t)
+	defer cleanup()
+
+	srv := New(zerolog.New(os.Stdout).Level(zerolog.DebugLevel))
+	config := testframework.GetSurrealDBConfig()
+	table := buildHistoryTable()
+	schema := "test_writehistorybatch"
+
+	// Create table
+	_, err := srv.CreateTable(t.Context(), &pb.CreateTableRequest{
+		Configuration: config,
+		SchemaName:    schema,
+		Table:         table,
+	})
+	require.NoError(t, err)
+	defer testframework.DropTable(t, config, "test", schema, table.Name)
+
+	// Insert initial version via replace
+	startTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+	endTime := "9999-12-31T23:59:59Z"
+	syncTime := time.Now().UTC().Format(time.RFC3339)
+
+	columns := []string{"_fivetran_id", "_fivetran_start", "_fivetran_end", "_fivetran_active", "_fivetran_synced", "name", "age", "active"}
+	records := [][]string{
+		{"user1", startTime.Format(time.RFC3339), endTime, "true", syncTime, "Alice", "25", "true"},
+	}
+	replaceKey, err := testframework.GenerateAESKey()
+	require.NoError(t, err)
+	replaceFile := testframework.CreateEncryptedCSV(t, tempDir, "version1.csv", columns, records, replaceKey)
+
+	// Delete the record
+	deleteTime := time.Date(2024, 1, 2, 12, 0, 0, 0, time.UTC)
+	deleteRecords := [][]string{
+		{"user1", "nullstring01234", deleteTime.Format(time.RFC3339), "false", syncTime, "nullstring01234", "nullstring01234", "nullstring01234"},
+	}
+	deleteKey, err := testframework.GenerateAESKey()
+	require.NoError(t, err)
+	deleteFile := testframework.CreateEncryptedCSV(t, tempDir, "delete.csv", columns, deleteRecords, deleteKey)
+
+	batchResp, err := srv.WriteHistoryBatch(t.Context(), &pb.WriteHistoryBatchRequest{
+		Configuration: config,
+		SchemaName:    schema,
+		Table:         table,
+		ReplaceFiles:  []string{replaceFile},
+		DeleteFiles:   []string{deleteFile},
+		Keys: map[string][]byte{
+			replaceFile: replaceKey,
+			deleteFile:  deleteKey,
+		},
+		FileParams: testframework.GetTestFileParams(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, batchResp)
+	success, ok := batchResp.Response.(*pb.WriteBatchResponse_Success)
+	require.True(t, ok, "Expected WriteHistoryBatch success response")
+	require.True(t, success.Success)
+
+	testframework.AssertRecordCount(t, config, "test", schema, table.Name, 1)
+
+	recordsFound := testframework.QueryTable(t, config, "test", schema, table.Name)
+	require.Len(t, recordsFound, 1, "Should have exactly one record after delete")
+	record := recordsFound[0]
+
+	require.Equal(t, "user1", record["_fivetran_id"])
+	assertHistoryRecordValues(t, record, map[string]any{
+		"name":   "Alice",
+		"age":    uint64(25),
+		"active": true,
+	})
+	require.Equal(t, false, record["_fivetran_active"], "Record should be marked inactive after delete")
+
+	startVal, ok := record["_fivetran_start"].(models.CustomDateTime)
+	require.True(t, ok, "_fivetran_start should be CustomDateTime")
+	require.Equal(t, startTime, startVal.Time, "_fivetran_start should remain the original start time")
+
+	endVal, ok := record["_fivetran_end"].(models.CustomDateTime)
+	require.True(t, ok, "_fivetran_end should be CustomDateTime")
+	require.Equal(t, deleteTime, endVal.Time, "_fivetran_end should be delete time")
+
+	syncedVal, ok := record["_fivetran_synced"].(models.CustomDateTime)
+	require.True(t, ok, "_fivetran_synced should be CustomDateTime")
+	require.Equal(t, syncTime, syncedVal.Format(time.RFC3339), "_fivetran_synced should match sync time")
+}
+
 func TestWriteHistoryBatch_SuccessEarliestStart(t *testing.T) {
 	tempDir, cleanup := setupWriteHistoryBatchTest(t)
 	defer cleanup()
