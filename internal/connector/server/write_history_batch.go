@@ -873,6 +873,12 @@ func (s *Server) handleHistoryModeDeleteFiles(ctx context.Context, db *surrealdb
 			vars[k] = typedV
 		}
 
+		// Always set _fivetran_active to false for delete operations,
+		// regardless of what the CSV file contains.
+		// This is necessary because Fivetran Cloud does NOT set _fivetran_active=false
+		// in delete file rows, unlike sdktester which does.
+		vars["_fivetran_active"] = false
+
 		var conds []string
 		for k := range vars {
 			if k == "thing" {
