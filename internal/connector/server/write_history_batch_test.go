@@ -1238,3 +1238,226 @@ func TestWriteHistoryBatch_SuccessReplaceUpdateDeleteSameRecord(t *testing.T) {
 	t2End := t2Record["_fivetran_end"].(models.CustomDateTime)
 	assert.Equal(t, deleteTime, t2End.Time, "T2: _fivetran_end should be delete time T3")
 }
+
+// TestWriteHistoryBatch_SuccessDeleteWithoutFivetranActive tests delete operation
+// when the delete CSV does NOT contain _fivetran_active=false.
+// This emulates Fivetran Cloud behavior, which differs from sdktester.
+// Fivetran Cloud does NOT set _fivetran_active=false in delete file rows,
+// but the implementation must still mark records as inactive.
+func TestWriteHistoryBatch_SuccessDeleteWithoutFivetranActive(t *testing.T) {
+	tempDir, cleanup := setupWriteHistoryBatchTest(t)
+	defer cleanup()
+
+	srv := New(zerolog.New(os.Stdout).Level(zerolog.DebugLevel))
+	config := testframework.GetSurrealDBConfig()
+	table := buildHistoryTable()
+	schema := "test_writehistorybatch"
+
+	// Create table
+	_, err := srv.CreateTable(t.Context(), &pb.CreateTableRequest{
+		Configuration: config,
+		SchemaName:    schema,
+		Table:         table,
+	})
+	require.NoError(t, err)
+	defer testframework.DropTable(t, config, "test", schema, table.Name)
+
+	// Insert initial version via replace
+	startTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+	endTime := "9999-12-31T23:59:59Z"
+	syncTime := time.Now().UTC().Format(time.RFC3339)
+
+	columns := []string{"_fivetran_id", "_fivetran_start", "_fivetran_end", "_fivetran_active", "_fivetran_synced", "name", "age", "active"}
+	records := [][]string{
+		{"user1", startTime.Format(time.RFC3339), endTime, "true", syncTime, "Alice", "25", "true"},
+	}
+	replaceKey, err := testframework.GenerateAESKey()
+	require.NoError(t, err)
+	replaceFile := testframework.CreateEncryptedCSV(t, tempDir, "version1.csv", columns, records, replaceKey)
+
+	// Delete the record - Fivetran Cloud style: _fivetran_active is NOT set to false
+	// Using nullstring01234 for _fivetran_active (which will be skipped in parsing)
+	deleteTime := time.Date(2024, 1, 2, 12, 0, 0, 0, time.UTC)
+	deleteRecords := [][]string{
+		// Note: _fivetran_active is "nullstring01234" (null), NOT "false"
+		// This emulates Fivetran Cloud behavior
+		{"user1", "nullstring01234", deleteTime.Format(time.RFC3339), "nullstring01234", syncTime, "nullstring01234", "nullstring01234", "nullstring01234"},
+	}
+	deleteKey, err := testframework.GenerateAESKey()
+	require.NoError(t, err)
+	deleteFile := testframework.CreateEncryptedCSV(t, tempDir, "delete.csv", columns, deleteRecords, deleteKey)
+
+	batchResp, err := srv.WriteHistoryBatch(t.Context(), &pb.WriteHistoryBatchRequest{
+		Configuration: config,
+		SchemaName:    schema,
+		Table:         table,
+		ReplaceFiles:  []string{replaceFile},
+		DeleteFiles:   []string{deleteFile},
+		Keys: map[string][]byte{
+			replaceFile: replaceKey,
+			deleteFile:  deleteKey,
+		},
+		FileParams: testframework.GetTestFileParams(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, batchResp)
+	success, ok := batchResp.Response.(*pb.WriteBatchResponse_Success)
+	require.True(t, ok, "Expected WriteHistoryBatch success response")
+	require.True(t, success.Success)
+
+	testframework.AssertRecordCount(t, config, "test", schema, table.Name, 1)
+
+	recordsFound := testframework.QueryTable(t, config, "test", schema, table.Name)
+	require.Len(t, recordsFound, 1, "Should have exactly one record after delete")
+	record := recordsFound[0]
+
+	require.Equal(t, "user1", record["_fivetran_id"])
+	assertHistoryRecordValues(t, record, map[string]any{
+		"name":   "Alice",
+		"age":    uint64(25),
+		"active": true,
+	})
+
+	// CRITICAL: Even though delete CSV did NOT contain _fivetran_active=false,
+	// the record should still be marked inactive
+	require.Equal(t, false, record["_fivetran_active"], "Record should be marked inactive after delete, even when CSV doesn't set _fivetran_active=false")
+
+	startVal, ok := record["_fivetran_start"].(models.CustomDateTime)
+	require.True(t, ok, "_fivetran_start should be CustomDateTime")
+	require.Equal(t, startTime, startVal.Time, "_fivetran_start should remain the original start time")
+
+	endVal, ok := record["_fivetran_end"].(models.CustomDateTime)
+	require.True(t, ok, "_fivetran_end should be CustomDateTime")
+	require.Equal(t, deleteTime, endVal.Time, "_fivetran_end should be delete time")
+}
+
+// TestWriteHistoryBatch_SuccessReplaceUpdateDeleteSameRecord_WithoutFivetranActive tests the full lifecycle
+// of a single record going through Replace → Update → Delete operations,
+// where the delete CSV does NOT contain _fivetran_active=false.
+// This emulates Fivetran Cloud behavior.
+func TestWriteHistoryBatch_SuccessReplaceUpdateDeleteSameRecord_WithoutFivetranActive(t *testing.T) {
+	tempDir, cleanup := setupWriteHistoryBatchTest(t)
+	defer cleanup()
+
+	srv := New(zerolog.New(os.Stdout).Level(zerolog.DebugLevel))
+	config := testframework.GetSurrealDBConfig()
+	table := buildHistoryTable()
+	schema := "test_writehistorybatch"
+
+	// Create table
+	_, err := srv.CreateTable(t.Context(), &pb.CreateTableRequest{
+		Configuration: config,
+		SchemaName:    schema,
+		Table:         table,
+	})
+	require.NoError(t, err)
+	defer testframework.DropTable(t, config, "test", schema, table.Name)
+
+	// Define timestamps
+	endTime := "9999-12-31T23:59:59Z"
+	syncTime := time.Now().UTC().Format(time.RFC3339)
+
+	startTime1 := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC) // T1: Initial replace
+	startTime2 := time.Date(2024, 1, 2, 12, 0, 0, 0, time.UTC) // T2: Update time
+	deleteTime := time.Date(2024, 1, 3, 12, 0, 0, 0, time.UTC) // T3: Delete time
+
+	columns := []string{"_fivetran_id", "_fivetran_start", "_fivetran_end", "_fivetran_active", "_fivetran_synced", "name", "age", "active"}
+
+	// 1. Replace CSV: Single record (user1) at T1
+	replaceRecords := [][]string{
+		{"user1", startTime1.Format(time.RFC3339), endTime, "true", syncTime, "Alice", "25", "true"},
+	}
+	replaceKey, err := testframework.GenerateAESKey()
+	require.NoError(t, err)
+	replaceFile := testframework.CreateEncryptedCSV(t, tempDir, "replace.csv", columns, replaceRecords, replaceKey)
+
+	// 2. Update CSV: Update user1 at T2 with new name, inherit age
+	updateRecords := [][]string{
+		{"user1", startTime2.Format(time.RFC3339), endTime, "true", syncTime, "Alice Updated", "unmodifiedstring56789", "unmodifiedstring56789"},
+	}
+	updateKey, err := testframework.GenerateAESKey()
+	require.NoError(t, err)
+	updateFile := testframework.CreateEncryptedCSV(t, tempDir, "update.csv", columns, updateRecords, updateKey)
+
+	// 3. Delete CSV: Delete user1 at T3 - Fivetran Cloud style: _fivetran_active is NOT set to false
+	deleteRecords := [][]string{
+		// Note: _fivetran_active is "nullstring01234" (null), NOT "false"
+		// This emulates Fivetran Cloud behavior
+		{"user1", "nullstring01234", deleteTime.Format(time.RFC3339), "nullstring01234", deleteTime.Format(time.RFC3339), "nullstring01234", "nullstring01234", "nullstring01234"},
+	}
+	deleteKey, err := testframework.GenerateAESKey()
+	require.NoError(t, err)
+	deleteFile := testframework.CreateEncryptedCSV(t, tempDir, "delete.csv", columns, deleteRecords, deleteKey)
+
+	// Execute WriteHistoryBatch with all three file types in one call
+	batchResp, err := srv.WriteHistoryBatch(t.Context(), &pb.WriteHistoryBatchRequest{
+		Configuration: config,
+		SchemaName:    schema,
+		Table:         table,
+		ReplaceFiles:  []string{replaceFile},
+		UpdateFiles:   []string{updateFile},
+		DeleteFiles:   []string{deleteFile},
+		Keys: map[string][]byte{
+			replaceFile: replaceKey,
+			updateFile:  updateKey,
+			deleteFile:  deleteKey,
+		},
+		FileParams: testframework.GetTestFileParams(),
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, batchResp)
+	success, ok := batchResp.Response.(*pb.WriteBatchResponse_Success)
+	require.True(t, ok, "Expected WriteHistoryBatch success response")
+	require.True(t, success.Success)
+
+	// ASSERTIONS
+
+	// 1. Verify exactly 2 records total (T1 version + T2 version, both for user1)
+	testframework.AssertRecordCount(t, config, "test", schema, table.Name, 2)
+
+	// Query all records
+	records := testframework.QueryTable(t, config, "test", schema, table.Name)
+
+	// Helper to find record by _fivetran_start time
+	findRecordByStart := func(start time.Time) map[string]any {
+		for _, record := range records {
+			ftStart, ok := record["_fivetran_start"].(models.CustomDateTime)
+			if ok && ftStart.Equal(start) {
+				return record
+			}
+		}
+		return nil
+	}
+
+	// 2. Verify T1 version (original, deactivated by update)
+	t1Record := findRecordByStart(startTime1)
+	require.NotNil(t, t1Record, "T1 version should exist")
+
+	assert.Equal(t, "user1", t1Record["_fivetran_id"], "T1: _fivetran_id should be user1")
+	assert.Equal(t, false, t1Record["_fivetran_active"], "T1: should be inactive (deactivated by update)")
+	assert.Equal(t, "Alice", t1Record["name"], "T1: name should be Alice")
+	assert.Equal(t, uint64(25), t1Record["age"], "T1: age should be 25")
+	assert.Equal(t, true, t1Record["active"], "T1: active should be true")
+
+	// T1 _fivetran_end should be T2-1ms (when the new version started)
+	t1End := t1Record["_fivetran_end"].(models.CustomDateTime)
+	expectedT1End := startTime2.Add(-time.Millisecond)
+	assert.Equal(t, expectedT1End, t1End.Time, "T1: _fivetran_end should be T2-1ms")
+
+	// 3. Verify T2 version (updated, then deactivated by delete)
+	t2Record := findRecordByStart(startTime2)
+	require.NotNil(t, t2Record, "T2 version should exist")
+
+	assert.Equal(t, "user1", t2Record["_fivetran_id"], "T2: _fivetran_id should be user1")
+	// CRITICAL: Even though delete CSV did NOT contain _fivetran_active=false,
+	// the record should still be marked inactive
+	assert.Equal(t, false, t2Record["_fivetran_active"], "T2: should be inactive (deactivated by delete), even when CSV doesn't set _fivetran_active=false")
+	assert.Equal(t, "Alice Updated", t2Record["name"], "T2: name should be Alice Updated")
+	assert.Equal(t, uint64(25), t2Record["age"], "T2: age should be inherited (25)")
+	assert.Equal(t, true, t2Record["active"], "T2: active should be inherited (true)")
+
+	// T2 _fivetran_end should be T3 (delete time)
+	t2End := t2Record["_fivetran_end"].(models.CustomDateTime)
+	assert.Equal(t, deleteTime, t2End.Time, "T2: _fivetran_end should be delete time T3")
+}
