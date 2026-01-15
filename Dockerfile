@@ -10,14 +10,14 @@ RUN go mod download
 
 COPY . .
 
-RUN go build -o bin/connector
+RUN go build -o bin/server
 
 FROM alpine:latest
 
 WORKDIR /app
 
-COPY --from=builder /app/bin/connector /app/connector
+COPY --from=builder /app/bin/server /app/server
 
 EXPOSE 50052
 
-CMD ["/app/connector", "--port", "50052"]
+CMD ["/app/server", "--port", "50052"]

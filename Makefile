@@ -23,7 +23,7 @@ generate: download-protos
 		proto/*.proto
 
 build:
-	go build -o bin/connector
+	go build -o bin/server
 
 test:
 	go test $(GOTEST_ARGS)
