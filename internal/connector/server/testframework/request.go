@@ -31,19 +31,19 @@ func NewWriteBatchRequest(
 // Uses Zstd compression and AES encryption with standard null/unmodified strings
 func GetTestFileParams() *pb.FileParams {
 	return &pb.FileParams{
-		Compression:       pb.Compression_ZSTD,
-		Encryption:        pb.Encryption_AES,
-		NullString:        "nullstring01234",
-		UnmodifiedString:  "unmodifiedstring56789",
+		Compression:      pb.Compression_ZSTD,
+		Encryption:       pb.Encryption_AES,
+		NullString:       "nullstring01234",
+		UnmodifiedString: "unmodifiedstring56789",
 	}
 }
 
 // GetUnencryptedFileParams returns FileParams for unencrypted/uncompressed files
 func GetUnencryptedFileParams() *pb.FileParams {
 	return &pb.FileParams{
-		Compression:       pb.Compression_OFF,
-		Encryption:        pb.Encryption_NONE,
-		NullString:        "nullstring01234",
-		UnmodifiedString:  "unmodifiedstring56789",
+		Compression:      pb.Compression_OFF,
+		Encryption:       pb.Encryption_NONE,
+		NullString:       "nullstring01234",
+		UnmodifiedString: "unmodifiedstring56789",
 	}
 }
