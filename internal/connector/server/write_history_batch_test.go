@@ -601,8 +601,8 @@ func TestWriteHistoryBatch_EarliestStartWithIdColumn(t *testing.T) {
 	recordsAfter := testframework.QueryTable(t, config, "test", schema, table.Name)
 	t.Logf("After earliest_start: %d records", len(recordsAfter))
 	for i, rec := range recordsAfter {
-		t.Logf("  Record %d: id=%v, _fivetran_start=%v, _fivetran_active=%v, _fivetran_end=%v",
-			i, rec["id"], rec["_fivetran_start"], rec["_fivetran_active"], rec["_fivetran_end"])
+		t.Logf("  Record %d: id=%v, username=%s, _fivetran_start=%v, _fivetran_active=%v, _fivetran_end=%v",
+			i, rec["id"], rec["username"], rec["_fivetran_start"], rec["_fivetran_active"], rec["_fivetran_end"])
 	}
 
 	// Per Fivetran docs:
@@ -621,9 +621,9 @@ func TestWriteHistoryBatch_EarliestStartWithIdColumn(t *testing.T) {
 	expectedEnd := t2.Add(-time.Millisecond)
 	actualEnd, ok := t1Record["_fivetran_end"].(models.CustomDateTime)
 	require.True(t, ok, "_fivetran_end should be CustomDateTime, got %T", t1Record["_fivetran_end"])
-	assert.True(t, actualEnd.Time.Equal(expectedEnd),
+	assert.True(t, actualEnd.Equal(expectedEnd),
 		"_fivetran_end should be T2-1ms. Expected: %s, Got: %s",
-		expectedEnd.Format(time.RFC3339Nano), actualEnd.Time.Format(time.RFC3339Nano))
+		expectedEnd.Format(time.RFC3339Nano), actualEnd.Format(time.RFC3339Nano))
 
 	// Verify T2 is active (the newly replaced record)
 	t2Record := recordsAfter[1]
@@ -633,9 +633,9 @@ func TestWriteHistoryBatch_EarliestStartWithIdColumn(t *testing.T) {
 	// Verify _fivetran_start of T2
 	actualStart, ok := t2Record["_fivetran_start"].(models.CustomDateTime)
 	require.True(t, ok, "_fivetran_start should be CustomDateTime, got %T", t2Record["_fivetran_start"])
-	assert.True(t, actualStart.Time.Equal(t2),
+	assert.True(t, actualStart.Equal(t2),
 		"_fivetran_start of T2 record should match expected T2 time. Expected: %s, Got: %s",
-		t2.Format(time.RFC3339Nano), actualStart.Time.Format(time.RFC3339Nano))
+		t2.Format(time.RFC3339Nano), actualStart.Format(time.RFC3339Nano))
 
 	// Verify username of T2
 	assert.Equal(t, "user_4", t2Record["username"],

@@ -203,88 +203,92 @@ func (s *Server) handleHistoryModeEarliestStartFiles(ctx context.Context, db *su
 
 		vars["tb"] = req.Table.Name
 
-		var pkCondsExceptFtStart []string
+		// Use range query approach for all PK columns
+		// This works for any PK column name (id, _fivetran_id, user_id, etc.)
+		// by building bounds from PK values excluding _fivetran_start
+		rangeConfig := buildRecordIDRangeQueryBounds(cols, pkVals)
 
-		for _, col := range cols {
-			if col == "_fivetran_start" {
-				// We don't want to include _fivetran_start in the equality conditions
-				// because we want to delete records whose _fivetran_start is greater than or equal to the given one.
-				continue
+		// For DELETE, include _fivetran_start in the lower bound so the range itself
+		// captures exactly the records to delete (those with _fivetran_start >= earliest_start)
+		// Lower bound: [pk_values..., earliest_start]
+		// Upper bound: [pk_values..., max_timestamp] (already set by buildRecordIDRangeQueryBounds)
+		earliestStart := vars["_fivetran_start"].(models.CustomDateTime)
+		lowerWithStart := append(rangeConfig.lowerBound, earliestStart)
+		vars["lower"] = lowerWithStart
+		vars["upper"] = rangeConfig.upperBound
+
+		if s.Debugging() {
+			var lowerTypes, upperTypes []string
+			for _, v := range lowerWithStart {
+				lowerTypes = append(lowerTypes, fmt.Sprintf("%T", v))
 			}
-			pkCondsExceptFtStart = append(pkCondsExceptFtStart, fmt.Sprintf("%s = $%s", col, col))
+			for _, v := range rangeConfig.upperBound {
+				upperTypes = append(upperTypes, fmt.Sprintf("%T", v))
+			}
+			s.LogDebug("handleHistoryModeEarliestStartFiles: using range query",
+				"lower", lowerWithStart,
+				"lowerTypes", lowerTypes,
+				"upper", rangeConfig.upperBound,
+				"upperTypes", upperTypes)
 		}
 
-		byPksExceptFtStart := strings.Join(pkCondsExceptFtStart, " AND ")
-		res, err := surrealdb.Query[any](
-			ctx,
-			db,
-			"DELETE FROM type::table($tb) WHERE "+byPksExceptFtStart+" AND _fivetran_start >= type::datetime($_fivetran_start);",
-			vars,
-		)
+		// DELETE using direct range comparison on id field
+		// SurrealDB's id field (RecordID) is inherently sorted, so range queries work directly.
+		// We skip creating pkcol index for tables with "id" as PK to avoid a potential SurrealDB bug
+		// where direct DELETE with range comparisons fails when indexes exist on the table.
+		// The range [pk, earliest_start] to [pk, max_timestamp] captures exactly the records to delete
+		deleteQuery := `DELETE FROM type::table($tb) WHERE id >= type::thing($tb, $lower) AND id < type::thing($tb, $upper);`
+
+		res, err := surrealdb.Query[any](ctx, db, deleteQuery, vars)
 		if err != nil {
 			return fmt.Errorf("unable to delete from table %s: %w", req.Table.Name, err)
 		}
 
 		if s.Debugging() {
-			s.LogDebug("Removed records", "byID", byPksExceptFtStart, "_fivetran_start_gt", vars["_fivetran_start"], "result", *res)
+			s.LogDebug("Removed records", "byID", rangeConfig.byID, "_fivetran_start_gte", vars["_fivetran_start"], "result", *res)
 		}
 
-		res, err = surrealdb.Query[any](
-			ctx,
-			db,
-			"SELECT _fivetran_start FROM type::table($tb) WHERE "+byPksExceptFtStart+" ORDER BY _fivetran_start DESC LIMIT 1;",
-			vars,
+		// Now find the latest remaining record to deactivate
+		// Use selectLatestHistoryRecord which handles both "id" column and standard cases
+		result, byID, err := s.selectLatestHistoryRecord(
+			ctx, db,
+			"_fivetran_start, id",
+			nil,
+			cols, pkVals,
+			req.Table.Name,
 		)
 		if err != nil {
-			return fmt.Errorf("unable to select from table %s: %w", req.Table.Name, err)
+			// Check if the error is "got empty query response" which means no records remain
+			if strings.Contains(err.Error(), "got empty query response") {
+				if s.Debugging() {
+					s.LogDebug("No existing records remain after earliest_start removal, skipping update to set _fivetran_active and _fivetran_end", "byID", byID)
+				}
+				return nil
+			}
+			return fmt.Errorf("unable to select latest record from table %s: %w", req.Table.Name, err)
 		}
 
 		if s.Debugging() {
-			s.LogDebug("Selected latest _fivetran_start", "byID", byPksExceptFtStart, "result", *res)
+			s.LogDebug("Selected latest record", "byID", byID, "result", result)
 		}
 
-		if len(*res) == 0 {
+		if len(result) == 0 {
 			// No existing records remain, nothing to do.
 			if s.Debugging() {
-				s.LogDebug("No existing records remain after earliest_start removal, skipping update to set _fivetran_active and _fivetran_end", "byID", byPksExceptFtStart)
+				s.LogDebug("No existing records remain after earliest_start removal, skipping update to set _fivetran_active and _fivetran_end", "byID", byID)
 			}
 			return nil
 		}
 
-		latestFtStartRecords := (*res)[0].Result.([]any)
-		switch len(latestFtStartRecords) {
-		case 0:
-			// No existing records remain, nothing to do.
-			if s.Debugging() {
-				s.LogDebug("No existing records remain after earliest_start removal, skipping update to set _fivetran_active and _fivetran_end", "byID", byPksExceptFtStart)
-			}
-			return nil
-		case 1:
-			// OK
-		default:
-			return fmt.Errorf("expected 0 or 1 latest _fivetran_start record, got %d", len(latestFtStartRecords))
-		}
-		latestFtStartRecord, ok := latestFtStartRecords[0].(map[string]any)
+		// Extract the actual RecordID from the query result
+		recordIDVal, ok := result[0]["id"]
 		if !ok {
-			return fmt.Errorf("unexpected type for latest _fivetran_start record: %T", latestFtStartRecords[0])
-		}
-		latestFtStartVal, ok := latestFtStartRecord["_fivetran_start"]
-		if !ok {
-			return fmt.Errorf("_fivetran_start not found in the selected record: %v", latestFtStartRecord)
+			return fmt.Errorf("id not found in the selected record: %v", result[0])
 		}
 
-		latestFtStart, ok := latestFtStartVal.(models.CustomDateTime)
+		updatedRecordID, ok := recordIDVal.(models.RecordID)
 		if !ok {
-			return fmt.Errorf("unexpected type for _fivetran_start: %T", latestFtStartVal)
-		}
-
-		pkVals[len(pkVals)-1] = latestFtStart
-
-		updatedRecordID := models.NewRecordID(req.Table.Name, pkVals)
-
-		earliestStart, ok := vars["_fivetran_start"].(models.CustomDateTime)
-		if !ok {
-			return fmt.Errorf("unexpected type for _fivetran_start in vars: %T", vars["_fivetran_start"])
+			return fmt.Errorf("unexpected type for id: %T, expected models.RecordID", recordIDVal)
 		}
 
 		endTime := models.CustomDateTime{

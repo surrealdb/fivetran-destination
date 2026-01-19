@@ -194,4 +194,3 @@ func TestBatchCopyRecords_EmptyTable(t *testing.T) {
 	records := (*results)[0].Result
 	require.Empty(t, records, "Dest table should be empty")
 }
-

@@ -235,20 +235,6 @@ func DefineFivetranStartFieldIndex(tb string) (string, error) {
 	return fmt.Sprintf(`DEFINE INDEX %s ON %s FIELDS _fivetran_start;`, tb, tb), nil
 }
 
-// DefineFivetranPKIndex generates the query to define an index on primary key columns.
-func DefineFivetranPKIndex(table *pb.Table) (string, error) {
-	var pkFields []string
-	for _, c := range table.Columns {
-		if c.PrimaryKey {
-			pkFields = append(pkFields, c.Name)
-		}
-	}
-	if len(pkFields) == 0 {
-		return "", fmt.Errorf("no primary key columns found for table %s", table.Name)
-	}
-	return fmt.Sprintf(`DEFINE INDEX %s_pkcol ON %s FIELDS %s;`, table.Name, table.Name, strings.Join(pkFields, ", ")), nil
-}
-
 // DefineTable defines a table and its fields in SurrealDB.
 func (tm *TableMapper) DefineTable(ctx context.Context, table *pb.Table) error {
 	var rpcRes connection.RPCResponse[any]
@@ -323,17 +309,14 @@ func (tm *TableMapper) DefineTable(ctx context.Context, table *pb.Table) error {
 		if tm.Debugging() {
 			tm.LogDebug("Defined fivetran_start field index", "table", tb, "query", q)
 		}
-
-		q, err = DefineFivetranPKIndex(table)
-		if err != nil {
-			return err
-		}
-		if err := surrealdb.Send(ctx, tm.db, &rpcRes, "query", q); err != nil {
-			return err
-		}
-		if tm.Debugging() {
-			tm.LogDebug("Defined pkcol index", "table", tb, "query", q)
-		}
+		// Note: We intentionally only create the _fivetran_start index above.
+		// We do NOT create an additional composite index on (id, _fivetran_start) because:
+		// 1. SurrealDB's id field (RecordID) already contains all PK values and is inherently indexed
+		// 2. The _fivetran_start field has its own index defined above for timestamp-based queries
+		// 3. Creating an index that includes the id field causes a SurrealDB bug where
+		//    DELETE queries with range comparisons (id >= ... AND id < ...) silently fail
+		//    to delete matching records. This affects handleHistoryModeEarliestStartFiles
+		//    in write_history_batch.go which uses range queries to delete history records.
 	}
 	return nil
 }
