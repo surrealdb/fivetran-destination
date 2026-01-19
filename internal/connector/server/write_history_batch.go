@@ -629,9 +629,17 @@ func (s *Server) handleHistoryModeUpdateFiles(ctx context.Context, db *surrealdb
 			vars[k] = v
 		}
 
-		prevThing, err := s.generateIdArrayTyped(previousPKValues, req.Table)
+		prevRecordID, err := s.generateIdArrayTyped(previousPKValues, req.Table)
 		if err != nil {
-			return fmt.Errorf("history mode update file while generating previous thing: %w", err)
+			return fmt.Errorf("unable to generate previous record ID for record %s: %w", thing, err)
+		}
+
+		if s.Debugging() {
+			s.LogDebug("handleHistoryModeUpdateFiles: generated prevRecordID",
+				"prevRecordID", *prevRecordID,
+				"prevRecordID.ID", prevRecordID.ID,
+				"prevRecordID.ID_type", fmt.Sprintf("%T", prevRecordID.ID),
+				"previousPKValues", previousPKValues)
 		}
 
 		newStartTime, ok := vars["_fivetran_start"].(models.CustomDateTime)
@@ -645,7 +653,7 @@ func (s *Server) handleHistoryModeUpdateFiles(ctx context.Context, db *surrealdb
 
 		// Update the previous record to set its _fivetran_active to false,
 		// and _fivetran_end to newStartTime-1ms
-		err = s.upsertSetHistoryMode(ctx, db, *prevThing, map[string]interface{}{
+		err = s.upsertSetHistoryMode(ctx, db, *prevRecordID, map[string]interface{}{
 			"_fivetran_active": false,
 			"_fivetran_end":    prevEndTime,
 		})
@@ -748,6 +756,9 @@ func (s *Server) getPreviousValues(ctx context.Context, db *surrealdb.DB, fields
 				}
 			} else {
 				fetchedPKValues[k] = v
+				if s.Debugging() {
+					s.LogDebug("Stored PK value", "k", k, "v", v, "v_type", fmt.Sprintf("%T", v))
+				}
 			}
 		} else {
 			fetchedContentValues[k] = v
@@ -758,6 +769,21 @@ func (s *Server) getPreviousValues(ctx context.Context, db *surrealdb.DB, fields
 }
 
 func (s *Server) upsertSetHistoryMode(ctx context.Context, db *surrealdb.DB, thing models.RecordID, vars map[string]interface{}) error {
+	if s.Debugging() {
+		// Log detailed info about the RecordID being used for UPSERT
+		var idElementTypes []string
+		if idSlice, ok := thing.ID.([]any); ok {
+			for i, elem := range idSlice {
+				idElementTypes = append(idElementTypes, fmt.Sprintf("[%d]=%T", i, elem))
+			}
+		}
+		s.LogDebug("upsertSetHistoryMode: targeting record",
+			"thing.Table", thing.Table,
+			"thing.ID", thing.ID,
+			"thing.ID_type", fmt.Sprintf("%T", thing.ID),
+			"thing.ID_element_types", idElementTypes)
+	}
+
 	var conds []string
 	for k := range vars {
 		if k == "thing" {

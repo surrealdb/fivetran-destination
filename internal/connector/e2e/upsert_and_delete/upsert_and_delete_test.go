@@ -167,7 +167,18 @@ func verifyHistoryModeData(t *testing.T) {
 			assert.Equal(t, "Done", status, "User id=3 latest record should have status='Done' after update")
 		}
 
-		t.Logf("User id=3 has %d history records, latest _fivetran_active=%v", len(userRecords), activeBool)
+		// The oldest (original) record should be deactivated by the update
+		oldestRecord := findOldestRecord(userRecords)
+		require.NotNil(t, oldestRecord, "Should find the oldest record for user id=3")
+
+		oldestActive, ok := oldestRecord["_fivetran_active"]
+		require.True(t, ok, "Oldest record should have _fivetran_active field")
+
+		oldestActiveBool, ok := oldestActive.(bool)
+		require.True(t, ok, "oldest _fivetran_active should be a boolean, got %T: %v", oldestActive, oldestActive)
+		assert.False(t, oldestActiveBool, "User id=3 original record should have _fivetran_active=false after update")
+
+		t.Logf("User id=3 has %d history records, latest _fivetran_active=%v, oldest _fivetran_active=%v", len(userRecords), activeBool, oldestActiveBool)
 	})
 
 	// Verify other users (1, 4, 5, 6, 7) should have _fivetran_active=true
@@ -302,41 +313,9 @@ func findLatestRecord(records []map[string]any) map[string]any {
 	var latestTime time.Time
 
 	for _, record := range records {
-		ftStart, ok := record["_fivetran_start"]
+		recordTime, ok := extractFivetranStartTime(record)
 		if !ok {
 			continue
-		}
-
-		var recordTime time.Time
-
-		switch v := ftStart.(type) {
-		case time.Time:
-			recordTime = v
-		case models.CustomDateTime:
-			recordTime = v.Time
-		case string:
-			parsed, err := time.Parse(time.RFC3339, v)
-			if err != nil {
-				parsed, err = time.Parse(time.RFC3339Nano, v)
-				if err != nil {
-					continue
-				}
-			}
-			recordTime = parsed
-		default:
-			// Try to extract from SurrealDB CustomDateTime
-			if stringer, ok := v.(fmt.Stringer); ok {
-				parsed, err := time.Parse(time.RFC3339, stringer.String())
-				if err != nil {
-					parsed, err = time.Parse(time.RFC3339Nano, stringer.String())
-					if err != nil {
-						continue
-					}
-				}
-				recordTime = parsed
-			} else {
-				continue
-			}
 		}
 
 		if latest == nil || recordTime.After(latestTime) {
@@ -346,4 +325,43 @@ func findLatestRecord(records []map[string]any) map[string]any {
 	}
 
 	return latest
+}
+
+// findOldestRecord finds the record with the lowest _fivetran_start timestamp
+func findOldestRecord(records []map[string]any) map[string]any {
+	if len(records) == 0 {
+		return nil
+	}
+
+	var oldest map[string]any
+	var oldestTime time.Time
+
+	for _, record := range records {
+		recordTime, ok := extractFivetranStartTime(record)
+		if !ok {
+			continue
+		}
+
+		if oldest == nil || recordTime.Before(oldestTime) {
+			oldest = record
+			oldestTime = recordTime
+		}
+	}
+
+	return oldest
+}
+
+// extractFivetranStartTime extracts the _fivetran_start timestamp from a record.
+// It expects the value to be models.CustomDateTime.
+func extractFivetranStartTime(record map[string]any) (time.Time, bool) {
+	ftStart, ok := record["_fivetran_start"]
+	if !ok {
+		return time.Time{}, false
+	}
+
+	v, ok := ftStart.(models.CustomDateTime)
+	if !ok {
+		panic(fmt.Sprintf("expected models.CustomDateTime for _fivetran_start, got %T: %v", ftStart, ftStart))
+	}
+	return v.Time, true
 }
