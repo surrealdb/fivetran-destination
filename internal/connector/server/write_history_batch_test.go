@@ -482,6 +482,166 @@ func TestWriteHistoryBatch_SuccessEarliestStart(t *testing.T) {
 		})
 }
 
+// TestWriteHistoryBatch_EarliestStartWithIdColumn tests earliest_start_files processing
+// when the table has "id" as a primary key column.
+//
+// This is a critical test because:
+// 1. When "id" is a PK column, SurrealDB's "id" field contains a RecordID (not the raw value)
+// 2. The earliest_start_files handler must use range queries to find records by PK
+// 3. Incorrect handling of this scenario may result in inability to deactivate historical records
+//
+// Expected behavior per Fivetran docs:
+// 1. Delete records where _fivetran_start >= earliest_start
+// 2. Deactivate remaining records by setting _fivetran_active=false, _fivetran_end=earliest_start-1ms
+func TestWriteHistoryBatch_EarliestStartWithIdColumn(t *testing.T) {
+	tempDir, cleanup := setupWriteHistoryBatchTest(t)
+	defer cleanup()
+
+	srv := New(zerolog.New(os.Stdout).Level(zerolog.DebugLevel))
+	config := testframework.GetSurrealDBConfig()
+	schema := "test_earliest_id"
+
+	// Use table with "id" as PK column - this is the critical edge case
+	table := &pb.Table{
+		Name: "users",
+		Columns: []*pb.Column{
+			{Name: "id", Type: pb.DataType_INT, PrimaryKey: true},
+			{Name: "_fivetran_start", Type: pb.DataType_UTC_DATETIME, PrimaryKey: true},
+			{Name: "_fivetran_synced", Type: pb.DataType_UTC_DATETIME, PrimaryKey: false},
+			{Name: "_fivetran_end", Type: pb.DataType_UTC_DATETIME, PrimaryKey: false},
+			{Name: "_fivetran_active", Type: pb.DataType_BOOLEAN, PrimaryKey: false},
+			{Name: "username", Type: pb.DataType_STRING, PrimaryKey: false},
+		},
+	}
+
+	// Create table
+	_, err := srv.CreateTable(t.Context(), &pb.CreateTableRequest{
+		Configuration: config,
+		SchemaName:    schema,
+		Table:         table,
+	})
+	require.NoError(t, err)
+	defer testframework.DropTable(t, config, "test", schema, table.Name)
+
+	// Timestamps
+	t1 := time.Date(2026, 1, 16, 11, 11, 14, 470000000, time.UTC) // T1: oldest version
+	t2 := time.Date(2026, 1, 16, 11, 16, 57, 0, time.UTC)         // T2: middle version
+	t3 := time.Date(2026, 1, 18, 0, 59, 48, 0, time.UTC)          // T3: newest version
+	endTime := "9999-12-31T23:59:59.999Z"
+	syncTime := time.Now().UTC().Format(time.RFC3339Nano)
+
+	columns := []string{"id", "_fivetran_start", "_fivetran_end", "_fivetran_active", "_fivetran_synced", "username"}
+
+	// Step 1: Insert three versions of the same record (id=997)
+	// This simulates potential behavior of Fivetran that may send multiple versions in replace_files
+	replaceRecords := [][]string{
+		// Probably _fivetran_active=false for T1 and T2, but this T1 is intended to simulate
+		// cases where this connector previously failed to set _fivetran_active=false on historical records.
+		// The earliest_start_files processing should correct this regardless.
+		{"997", t1.Format(time.RFC3339Nano), endTime, "true", syncTime, "user_v1"},
+		{"997", t2.Format(time.RFC3339Nano), endTime, "false", syncTime, "user_v2"},
+		{"997", t3.Format(time.RFC3339Nano), endTime, "true", syncTime, "user_v3"},
+	}
+	replaceKey, err := testframework.GenerateAESKey()
+	require.NoError(t, err)
+	replaceFile := testframework.CreateEncryptedCSV(t, tempDir, "replace.csv", columns, replaceRecords, replaceKey)
+
+	_, err = srv.WriteHistoryBatch(t.Context(), &pb.WriteHistoryBatchRequest{
+		Configuration: config,
+		SchemaName:    schema,
+		Table:         table,
+		ReplaceFiles:  []string{replaceFile},
+		Keys:          map[string][]byte{replaceFile: replaceKey},
+		FileParams:    testframework.GetTestFileParams(),
+	})
+	require.NoError(t, err)
+
+	// Verify all 3 versions exist
+	recordsBefore := testframework.QueryTable(t, config, "test", schema, table.Name)
+	t.Logf("Before earliest_start: %d records", len(recordsBefore))
+	for i, rec := range recordsBefore {
+		t.Logf("  Record %d: id=%v, _fivetran_start=%v, _fivetran_active=%v", i, rec["id"], rec["_fivetran_start"], rec["_fivetran_active"])
+	}
+	require.Len(t, recordsBefore, 3, "Should have 3 records before earliest_start processing")
+
+	// Step 2: Send earliest_start file for T2
+	// According to Fivetran docs, this should:
+	// 1. Delete records where _fivetran_start >= T2 (i.e., T2 and T3)
+	// 2. Deactivate T1 by setting _fivetran_active=false, _fivetran_end=T2-1ms
+	earliestColumns := []string{"id", "_fivetran_start"}
+	earliestRecords := [][]string{
+		{"997", t2.Format(time.RFC3339Nano)},
+	}
+	earliestKey, err := testframework.GenerateAESKey()
+	require.NoError(t, err)
+	earliestFile := testframework.CreateEncryptedCSV(t, tempDir, "earliest.csv", earliestColumns, earliestRecords, earliestKey)
+
+	replaceRecords2 := [][]string{
+		{"997", t2.Format(time.RFC3339Nano), endTime, "true", syncTime, "user_4"},
+	}
+	replaceKey2, err := testframework.GenerateAESKey()
+	require.NoError(t, err)
+	replaceFile2 := testframework.CreateEncryptedCSV(t, tempDir, "replace.csv", columns, replaceRecords2, replaceKey2)
+
+	batchResp, err := srv.WriteHistoryBatch(t.Context(), &pb.WriteHistoryBatchRequest{
+		Configuration:      config,
+		SchemaName:         schema,
+		Table:              table,
+		EarliestStartFiles: []string{earliestFile},
+		ReplaceFiles:       []string{replaceFile2},
+		Keys:               map[string][]byte{earliestFile: earliestKey, replaceFile2: replaceKey2},
+		FileParams:         testframework.GetTestFileParams(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, batchResp)
+	_, ok := batchResp.Response.(*pb.WriteBatchResponse_Success)
+	require.True(t, ok, "Expected success response for earliest_start")
+
+	// Step 3: Verify the result
+	recordsAfter := testframework.QueryTable(t, config, "test", schema, table.Name)
+	t.Logf("After earliest_start: %d records", len(recordsAfter))
+	for i, rec := range recordsAfter {
+		t.Logf("  Record %d: id=%v, _fivetran_start=%v, _fivetran_active=%v, _fivetran_end=%v",
+			i, rec["id"], rec["_fivetran_start"], rec["_fivetran_active"], rec["_fivetran_end"])
+	}
+
+	// Per Fivetran docs:
+	// - T2 and T3 should be DELETED (only T1 remains)
+	// - T1 should have _fivetran_active=false and _fivetran_end=T2-1ms
+	// - T2 is re-inserted as active record due to replace_files
+	// Therefore, we expect 2 records: T1 (deactivated) and T2 (new active)
+	require.Len(t, recordsAfter, 2, "Should have only 2 records after earliest_start (T2 and T3 deleted) and T2 replaced")
+
+	// Verify T1 is deactivated
+	t1Record := recordsAfter[0]
+	assert.Equal(t, false, t1Record["_fivetran_active"],
+		"T1 record should have _fivetran_active=false after earliest_start processing")
+
+	// Verify _fivetran_end is set to T2-1ms
+	expectedEnd := t2.Add(-time.Millisecond)
+	actualEnd, ok := t1Record["_fivetran_end"].(models.CustomDateTime)
+	require.True(t, ok, "_fivetran_end should be CustomDateTime, got %T", t1Record["_fivetran_end"])
+	assert.True(t, actualEnd.Time.Equal(expectedEnd),
+		"_fivetran_end should be T2-1ms. Expected: %s, Got: %s",
+		expectedEnd.Format(time.RFC3339Nano), actualEnd.Time.Format(time.RFC3339Nano))
+
+	// Verify T2 is active (the newly replaced record)
+	t2Record := recordsAfter[1]
+	assert.Equal(t, true, t2Record["_fivetran_active"],
+		"T2 record should have _fivetran_active=true as it was re-inserted via replace_files")
+
+	// Verify _fivetran_start of T2
+	actualStart, ok := t2Record["_fivetran_start"].(models.CustomDateTime)
+	require.True(t, ok, "_fivetran_start should be CustomDateTime, got %T", t2Record["_fivetran_start"])
+	assert.True(t, actualStart.Time.Equal(t2),
+		"_fivetran_start of T2 record should match expected T2 time. Expected: %s, Got: %s",
+		t2.Format(time.RFC3339Nano), actualStart.Time.Format(time.RFC3339Nano))
+
+	// Verify username of T2
+	assert.Equal(t, "user_4", t2Record["username"],
+		"T2 record should have username 'user_4' as per the replace_files")
+}
+
 func TestWriteHistoryBatch_SuccessDelete(t *testing.T) {
 	tempDir, cleanup := setupWriteHistoryBatchTest(t)
 	defer cleanup()
