@@ -12,7 +12,7 @@ COPY . .
 
 RUN go build -o bin/server
 
-FROM alpine:latest
+FROM alpine:3.23.3
 
 WORKDIR /app
 
