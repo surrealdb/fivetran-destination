@@ -622,12 +622,11 @@ func TestWriteBatch_FailureInvalidConfig(t *testing.T) {
 		FileParams:    testframework.GetTestFileParams(),
 	})
 
-	// Should fail
-	require.Error(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, batchResp)
-	warning, ok := batchResp.Response.(*pb.WriteBatchResponse_Warning)
-	require.True(t, ok, "Expected WriteBatch warning response")
-	require.NotEmpty(t, warning.Warning)
+	task, ok := batchResp.Response.(*pb.WriteBatchResponse_Task)
+	require.True(t, ok, "Expected WriteBatch task response")
+	require.NotEmpty(t, task.Task.Message)
 }
 
 func TestWriteBatch_FailureTableNotExists(t *testing.T) {
@@ -657,12 +656,11 @@ func TestWriteBatch_FailureTableNotExists(t *testing.T) {
 		FileParams:    testframework.GetTestFileParams(),
 	})
 
-	// Should fail
-	require.Error(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, batchResp)
-	warning, ok := batchResp.Response.(*pb.WriteBatchResponse_Warning)
-	require.True(t, ok, "Expected WriteBatch warning response")
-	require.NotEmpty(t, warning.Warning)
+	task, ok := batchResp.Response.(*pb.WriteBatchResponse_Task)
+	require.True(t, ok, "Expected WriteBatch task response")
+	require.NotEmpty(t, task.Task.Message)
 }
 
 func TestWriteBatch_FailureInvalidEncryptionKey(t *testing.T) {
@@ -703,12 +701,11 @@ func TestWriteBatch_FailureInvalidEncryptionKey(t *testing.T) {
 		FileParams:    testframework.GetTestFileParams(),
 	})
 
-	// Should fail
-	require.Error(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, batchResp)
-	warning, ok := batchResp.Response.(*pb.WriteBatchResponse_Warning)
-	require.True(t, ok, "Expected WriteBatch warning response")
-	require.NotEmpty(t, warning.Warning)
+	task, ok := batchResp.Response.(*pb.WriteBatchResponse_Task)
+	require.True(t, ok, "Expected WriteBatch task response")
+	require.NotEmpty(t, task.Task.Message)
 }
 
 func TestWriteBatch_FailureFileNotFound(t *testing.T) {
@@ -741,12 +738,11 @@ func TestWriteBatch_FailureFileNotFound(t *testing.T) {
 		FileParams:    testframework.GetTestFileParams(),
 	})
 
-	// Should fail
-	require.Error(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, batchResp)
-	warning, ok := batchResp.Response.(*pb.WriteBatchResponse_Warning)
-	require.True(t, ok, "Expected WriteBatch warning response")
-	require.NotEmpty(t, warning.Warning)
+	task, ok := batchResp.Response.(*pb.WriteBatchResponse_Task)
+	require.True(t, ok, "Expected WriteBatch task response")
+	require.NotEmpty(t, task.Task.Message)
 }
 
 func TestWriteBatch_SuccessSingleIDPK(t *testing.T) {

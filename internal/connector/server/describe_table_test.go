@@ -302,19 +302,11 @@ func TestDescribeTable_FailureInvalidConfig(t *testing.T) {
 		TableName:     "users",
 	})
 
-	// Should fail with error response
-	require.Error(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, describeResp)
-
-	// Check for warning response
-	warning, ok := describeResp.Response.(*pb.DescribeTableResponse_Warning)
-	if ok {
-		require.NotEmpty(t, warning.Warning)
-	} else {
-		// Or NotFound response if connection fails before table lookup
-		_, notFoundOk := describeResp.Response.(*pb.DescribeTableResponse_NotFound)
-		require.True(t, notFoundOk, "Expected either Warning or NotFound response")
-	}
+	task, ok := describeResp.Response.(*pb.DescribeTableResponse_Task)
+	require.True(t, ok, "Expected DescribeTable task response")
+	require.NotEmpty(t, task.Task.Message)
 }
 
 func TestDescribeTable_FailureEmptyTableName(t *testing.T) {
@@ -328,13 +320,12 @@ func TestDescribeTable_FailureEmptyTableName(t *testing.T) {
 		TableName:     "",
 	})
 
-	// Should return error with warning response (table name validation fails)
-	require.Error(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, describeResp)
-	warning, ok := describeResp.Response.(*pb.DescribeTableResponse_Warning)
-	require.True(t, ok, "Expected DescribeTable Warning response for empty table name")
-	require.NotEmpty(t, warning.Warning.Message)
-	require.Contains(t, warning.Warning.Message, "table name is required")
+	task, ok := describeResp.Response.(*pb.DescribeTableResponse_Task)
+	require.True(t, ok, "Expected DescribeTable task response for empty table name")
+	require.NotEmpty(t, task.Task.Message)
+	require.Contains(t, task.Task.Message, "table name is required")
 }
 
 func TestDescribeTable_FailureInvalidSchemaName(t *testing.T) {

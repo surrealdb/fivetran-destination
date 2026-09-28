@@ -51,7 +51,7 @@ func (s *Server) migrate(ctx context.Context, req *pb.MigrateRequest) error {
 			return err
 		}
 	default:
-		return fmt.Errorf("unknown migration operation: %T", v)
+		return fmt.Errorf("%w: %T", errUnsupportedMigration, v)
 	}
 	return nil
 }
@@ -85,7 +85,7 @@ func (s *Server) migrateDrop(ctx context.Context, m *migrator.Migrator, schema s
 
 		return m.DropColumnInHistoryMode(ctx, schema, table, dropCol.Column, operationTimestamp)
 	default:
-		return fmt.Errorf("unknown drop operation: %T", v)
+		return fmt.Errorf("%w: %T", errUnsupportedMigration, v)
 	}
 }
 
@@ -123,7 +123,7 @@ func (s *Server) migrateCopy(ctx context.Context, m *migrator.Migrator, schema s
 
 		return m.CopyTableToHistoryMode(ctx, schema, table, copyHist.FromTable, copyHist.ToTable, copyHist.SoftDeletedColumn)
 	default:
-		return fmt.Errorf("unknown copy operation: %T", v)
+		return fmt.Errorf("%w: %T", errUnsupportedMigration, v)
 	}
 }
 
@@ -150,7 +150,7 @@ func (s *Server) migrateRename(ctx context.Context, m *migrator.Migrator, schema
 
 		return m.RenameTable(ctx, schema, table, renameTbl.FromTable, renameTbl.ToTable)
 	default:
-		return fmt.Errorf("unknown rename operation: %T", v)
+		return fmt.Errorf("%w: %T", errUnsupportedMigration, v)
 	}
 }
 
@@ -189,7 +189,7 @@ func (s *Server) migrateAdd(ctx context.Context, m *migrator.Migrator, schema st
 		}
 		return m.AddColumnInHistoryMode(ctx, schema, table, &column, addColHist.DefaultValue, operationTimestamp)
 	default:
-		return fmt.Errorf("unknown add operation: %T", v)
+		return fmt.Errorf("%w: %T", errUnsupportedMigration, v)
 	}
 }
 
@@ -235,6 +235,6 @@ func (s *Server) migrateTableSyncModeMigration(ctx context.Context, m *migrator.
 	case pb.TableSyncModeMigrationType_LIVE_TO_HISTORY:
 		return m.ModeLiveToHistory(ctx, schema, table)
 	default:
-		return fmt.Errorf("unknown table sync mode migration type: %v", migration.Type)
+		return fmt.Errorf("%w: %v", errUnsupportedMigration, migration.Type)
 	}
 }
