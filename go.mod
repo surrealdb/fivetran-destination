@@ -1,6 +1,6 @@
 module github.com/surrealdb/fivetran-destination
 
-go 1.25.3
+go 1.27.1
 
 require (
 	github.com/klauspost/compress v1.18.0

@@ -41,7 +41,7 @@ Please refer to the [setup guide](docs/setup-guide.md) for how to get started wi
 
 ### Prerequisites
 
-- Go 1.25.3 or later
+- Go 1.27.1 or later
 - Protocol Buffers compiler (protoc)
 - SurrealDB instance for testing
 - Docker (for running conformance tests)
