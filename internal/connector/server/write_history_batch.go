@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -30,33 +29,12 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 
 	cfg, err := s.parseConfig(req.Configuration)
 	if err != nil {
-		return &pb.WriteBatchResponse{
-			Response: &pb.WriteBatchResponse_Warning{
-				Warning: &pb.Warning{
-					Message: fmt.Sprintf("failed parsing write history batch config: %v", err.Error()),
-				},
-			},
-		}, err
+		return s.batchFailure("WriteHistoryBatch", fmt.Errorf("failed parsing write history batch config: %w", err))
 	}
 
 	db, err := s.connectAndUse(ctx, cfg, req.SchemaName)
 	if err != nil {
-		// Check for token expiration - return Task instead of Warning
-		if errors.Is(err, ErrTokenExpired) {
-			s.LogSevere("Authentication token expired", err, "schema", req.SchemaName)
-			return &pb.WriteBatchResponse{
-				Response: &pb.WriteBatchResponse_Task{
-					Task: NewTokenExpiredTask(),
-				},
-			}, err
-		}
-		return &pb.WriteBatchResponse{
-			Response: &pb.WriteBatchResponse_Warning{
-				Warning: &pb.Warning{
-					Message: err.Error(),
-				},
-			},
-		}, err
+		return s.batchFailure("WriteHistoryBatch", err)
 	}
 	defer func() {
 		if err := db.Close(ctx); err != nil {
@@ -70,13 +48,7 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 
 	tb, err := s.infoForTable(ctx, req.SchemaName, req.Table.Name, req.Configuration)
 	if err != nil {
-		return &pb.WriteBatchResponse{
-			Response: &pb.WriteBatchResponse_Warning{
-				Warning: &pb.Warning{
-					Message: err.Error(),
-				},
-			},
-		}, err
+		return s.batchFailure("WriteHistoryBatch", err)
 	}
 
 	fields := make(map[string]tablemapper.ColumnInfo)
@@ -92,13 +64,7 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 	//
 	// See "EARLIEST START FILE" in https://github.com/fivetran/fivetran_partner_sdk/blob/main/history_mode.png
 	if err := s.handleHistoryModeEarliestStartFiles(ctx, db, fields, req); err != nil {
-		return &pb.WriteBatchResponse{
-			Response: &pb.WriteBatchResponse_Warning{
-				Warning: &pb.Warning{
-					Message: err.Error(),
-				},
-			},
-		}, err
+		return s.batchFailure("WriteHistoryBatch", err)
 	}
 
 	if s.Debugging() {
@@ -109,13 +75,7 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 	//
 	// We assume this corresponds to "UPSERT BATCH FILE" in https://github.com/fivetran/fivetran_partner_sdk/blob/main/history_mode.png
 	if err := s.handleHistoryModeReplaceFiles(ctx, db, fields, req.ReplaceFiles, req.FileParams, req.Keys, req.Table); err != nil {
-		return &pb.WriteBatchResponse{
-			Response: &pb.WriteBatchResponse_Warning{
-				Warning: &pb.Warning{
-					Message: err.Error(),
-				},
-			},
-		}, err
+		return s.batchFailure("WriteHistoryBatch", err)
 	}
 
 	if s.Debugging() {
@@ -126,13 +86,7 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 	//
 	// We assume this corresponds to "UPDATE BATCH FILE" in https://github.com/fivetran/fivetran_partner_sdk/blob/main/history_mode.png
 	if err := s.handleHistoryModeUpdateFiles(ctx, db, fields, req); err != nil {
-		return &pb.WriteBatchResponse{
-			Response: &pb.WriteBatchResponse_Warning{
-				Warning: &pb.Warning{
-					Message: err.Error(),
-				},
-			},
-		}, err
+		return s.batchFailure("WriteHistoryBatch", err)
 	}
 
 	if s.Debugging() {
@@ -145,13 +99,7 @@ func (s *Server) writeHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 	// Once that's done this will correspond to "DELETE BATCH FILE" in
 	// https://github.com/fivetran/fivetran_partner_sdk/blob/main/history_mode.png
 	if err := s.handleHistoryModeDeleteFiles(ctx, db, fields, req); err != nil {
-		return &pb.WriteBatchResponse{
-			Response: &pb.WriteBatchResponse_Warning{
-				Warning: &pb.Warning{
-					Message: err.Error(),
-				},
-			},
-		}, err
+		return s.batchFailure("WriteHistoryBatch", err)
 	}
 
 	return &pb.WriteBatchResponse{

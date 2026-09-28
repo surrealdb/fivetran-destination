@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -33,33 +32,12 @@ func (s *Server) truncate(ctx context.Context, req *pb.TruncateRequest) (*pb.Tru
 	}
 	cfg, err := s.parseConfig(req.Configuration)
 	if err != nil {
-		return &pb.TruncateResponse{
-			Response: &pb.TruncateResponse_Warning{
-				Warning: &pb.Warning{
-					Message: err.Error(),
-				},
-			},
-		}, err
+		return s.truncateFailure(err)
 	}
 
 	db, err := s.connectAndUse(ctx, cfg, req.SchemaName)
 	if err != nil {
-		// Check for token expiration - return Task instead of Warning
-		if errors.Is(err, ErrTokenExpired) {
-			s.LogSevere("Authentication token expired", err, "schema", req.SchemaName)
-			return &pb.TruncateResponse{
-				Response: &pb.TruncateResponse_Task{
-					Task: NewTokenExpiredTask(),
-				},
-			}, err
-		}
-		return &pb.TruncateResponse{
-			Response: &pb.TruncateResponse_Warning{
-				Warning: &pb.Warning{
-					Message: err.Error(),
-				},
-			},
-		}, err
+		return s.truncateFailure(err)
 	}
 	defer func() {
 		if err := db.Close(ctx); err != nil {
@@ -74,13 +52,7 @@ func (s *Server) truncate(ctx context.Context, req *pb.TruncateRequest) (*pb.Tru
 		)
 
 		if err := s.softTruncate(ctx, db, req); err != nil {
-			return &pb.TruncateResponse{
-				Response: &pb.TruncateResponse_Warning{
-					Warning: &pb.Warning{
-						Message: err.Error(),
-					},
-				},
-			}, err
+			return s.truncateFailure(err)
 		}
 	}
 

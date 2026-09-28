@@ -13,6 +13,7 @@ import (
 	"github.com/surrealdb/fivetran-destination/internal/connector/metrics"
 	"github.com/surrealdb/fivetran-destination/internal/connector/server/migrator"
 	pb "github.com/surrealdb/fivetran-destination/internal/pb"
+	"github.com/surrealdb/surrealdb.go"
 	_ "google.golang.org/grpc/encoding/gzip"
 )
 
@@ -43,6 +44,16 @@ type Server struct {
 
 	*log.Logging
 	metrics *metrics.Collector
+
+	// dial overrides the SurrealDB endpoint dial. Tests use it to simulate transport failures.
+	dial func(ctx context.Context, rawURL string) (*surrealdb.DB, error)
+	// connectAttempts, when set, overrides the default dial retry budget.
+	connectAttempts int
+	// connectAttemptTimeout, when set, overrides the per-attempt dial timeout.
+	connectAttemptTimeout time.Duration
+	// retryBaseDelay, when connectAttempts is set, is the base delay between dial retries.
+	// Zero means no delay. When connectAttempts is unset, the default delay is used.
+	retryBaseDelay time.Duration
 }
 
 // Start initializes and starts the server components
@@ -162,7 +173,7 @@ func (s *Server) Test(ctx context.Context, req *pb.TestRequest) (*pb.TestRespons
 			Response: &pb.TestResponse_Failure{
 				Failure: fmt.Sprintf("failed parsing test config: %v", err.Error()),
 			},
-		}, err
+		}, nil
 	}
 
 	if _, err := s.connect(ctx, cfg); err != nil {
@@ -179,7 +190,7 @@ func (s *Server) Test(ctx context.Context, req *pb.TestRequest) (*pb.TestRespons
 			Response: &pb.TestResponse_Failure{
 				Failure: failureMsg,
 			},
-		}, err
+		}, nil
 	}
 
 	s.LogDebug("Finished configuration test",
@@ -208,23 +219,7 @@ func (s *Server) DescribeTable(ctx context.Context, req *pb.DescribeTableRequest
 			}, nil
 		}
 
-		// Check for token expiration - return Task instead of Warning
-		if errors.Is(err, ErrTokenExpired) {
-			s.LogSevere("Authentication token expired", err, "schema", req.SchemaName)
-			return &pb.DescribeTableResponse{
-				Response: &pb.DescribeTableResponse_Task{
-					Task: NewTokenExpiredTask(),
-				},
-			}, err
-		}
-
-		return &pb.DescribeTableResponse{
-			Response: &pb.DescribeTableResponse_Warning{
-				Warning: &pb.Warning{
-					Message: err.Error(),
-				},
-			},
-		}, err
+		return s.describeTableFailure(err)
 	}
 
 	if s.Debugging() {
@@ -246,14 +241,7 @@ func (s *Server) DescribeTable(ctx context.Context, req *pb.DescribeTableRequest
 
 	ftColumns, err := s.columnsFromSurrealToFivetran(tb.Columns)
 	if err != nil {
-		return &pb.DescribeTableResponse{
-			// notfound, table, warning, task
-			Response: &pb.DescribeTableResponse_Warning{
-				Warning: &pb.Warning{
-					Message: err.Error(),
-				},
-			},
-		}, err
+		return s.describeTableFailure(err)
 	}
 
 	return &pb.DescribeTableResponse{
@@ -275,34 +263,12 @@ func (s *Server) CreateTable(ctx context.Context, req *pb.CreateTableRequest) (*
 
 	cfg, err := s.parseConfig(req.Configuration)
 	if err != nil {
-		return &pb.CreateTableResponse{
-			Response: &pb.CreateTableResponse_Warning{
-				Warning: &pb.Warning{
-					Message: fmt.Sprintf("failed parsing create table config: %v", err.Error()),
-				},
-			},
-		}, err
+		return s.createTableFailure(fmt.Errorf("failed parsing create table config: %w", err))
 	}
 
 	db, err := s.connectAndUse(ctx, cfg, req.SchemaName)
 	if err != nil {
-		// Check for token expiration - return Task instead of Warning
-		if errors.Is(err, ErrTokenExpired) {
-			s.LogSevere("Authentication token expired", err, "schema", req.SchemaName)
-			return &pb.CreateTableResponse{
-				Response: &pb.CreateTableResponse_Task{
-					Task: NewTokenExpiredTask(),
-				},
-			}, err
-		}
-		return &pb.CreateTableResponse{
-			// success, warning, task
-			Response: &pb.CreateTableResponse_Warning{
-				Warning: &pb.Warning{
-					Message: err.Error(),
-				},
-			},
-		}, err
+		return s.createTableFailure(err)
 	}
 	defer func() {
 		if err := db.Close(ctx); err != nil {
@@ -311,26 +277,12 @@ func (s *Server) CreateTable(ctx context.Context, req *pb.CreateTableRequest) (*
 	}()
 
 	if err := s.defineTable(ctx, db, req.Table); err != nil {
-		return &pb.CreateTableResponse{
-			// success, warning, task
-			Response: &pb.CreateTableResponse_Warning{
-				Warning: &pb.Warning{
-					Message: err.Error(),
-				},
-			},
-		}, err
+		return s.createTableFailure(err)
 	}
 
 	tbInfo, err := s.infoForTable(ctx, req.SchemaName, req.Table.Name, req.Configuration)
 	if err != nil {
-		return &pb.CreateTableResponse{
-			// success, warning, task
-			Response: &pb.CreateTableResponse_Warning{
-				Warning: &pb.Warning{
-					Message: err.Error(),
-				},
-			},
-		}, err
+		return s.createTableFailure(err)
 	}
 
 	if s.Debugging() {
@@ -352,13 +304,7 @@ func (s *Server) AlterTable(ctx context.Context, req *pb.AlterTableRequest) (*pb
 	}
 	cfg, err := s.parseConfig(req.Configuration)
 	if err != nil {
-		return &pb.AlterTableResponse{
-			Response: &pb.AlterTableResponse_Warning{
-				Warning: &pb.Warning{
-					Message: fmt.Sprintf("failed parsing alter table config: %v", err.Error()),
-				},
-			},
-		}, err
+		return s.alterTableFailure(fmt.Errorf("failed parsing alter table config: %w", err))
 	}
 
 	if s.Debugging() {
@@ -367,22 +313,7 @@ func (s *Server) AlterTable(ctx context.Context, req *pb.AlterTableRequest) (*pb
 
 	db, err := s.connectAndUse(ctx, cfg, req.SchemaName)
 	if err != nil {
-		// Check for token expiration - return Task instead of Warning
-		if errors.Is(err, ErrTokenExpired) {
-			s.LogSevere("Authentication token expired", err, "schema", req.SchemaName)
-			return &pb.AlterTableResponse{
-				Response: &pb.AlterTableResponse_Task{
-					Task: NewTokenExpiredTask(),
-				},
-			}, err
-		}
-		return &pb.AlterTableResponse{
-			Response: &pb.AlterTableResponse_Warning{
-				Warning: &pb.Warning{
-					Message: err.Error(),
-				},
-			},
-		}, err
+		return s.alterTableFailure(err)
 	}
 	defer func() {
 		if err := db.Close(ctx); err != nil {
@@ -391,37 +322,19 @@ func (s *Server) AlterTable(ctx context.Context, req *pb.AlterTableRequest) (*pb
 	}()
 
 	if err := s.defineTable(ctx, db, req.Table); err != nil {
-		return &pb.AlterTableResponse{
-			Response: &pb.AlterTableResponse_Warning{
-				Warning: &pb.Warning{
-					Message: err.Error(),
-				},
-			},
-		}, err
+		return s.alterTableFailure(err)
 	}
 
 	if req.DropColumns {
 		m := migrator.New(db, s.Logging)
 		if err := m.RemoveSurrealDBFieldsNotInFivetranTable(ctx, db, req.SchemaName, req.Table); err != nil {
-			return &pb.AlterTableResponse{
-				Response: &pb.AlterTableResponse_Warning{
-					Warning: &pb.Warning{
-						Message: err.Error(),
-					},
-				},
-			}, err
+			return s.alterTableFailure(err)
 		}
 	}
 
 	tbInfo, err := s.infoForTable(ctx, req.SchemaName, req.Table.Name, req.Configuration)
 	if err != nil {
-		return &pb.AlterTableResponse{
-			Response: &pb.AlterTableResponse_Warning{
-				Warning: &pb.Warning{
-					Message: err.Error(),
-				},
-			},
-		}, err
+		return s.alterTableFailure(err)
 	}
 
 	if s.Debugging() {
@@ -450,12 +363,5 @@ func (s *Server) WriteHistoryBatch(ctx context.Context, req *pb.WriteHistoryBatc
 }
 
 func (s *Server) Migrate(ctx context.Context, req *pb.MigrateRequest) (*pb.MigrateResponse, error) {
-	if err := s.migrate(ctx, req); err != nil {
-		return nil, fmt.Errorf("migration failed: %w", err)
-	}
-	return &pb.MigrateResponse{
-		Response: &pb.MigrateResponse_Success{
-			Success: true,
-		},
-	}, nil
+	return s.migrateResult(s.migrate(ctx, req))
 }
