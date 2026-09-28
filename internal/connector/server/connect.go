@@ -18,15 +18,16 @@ import (
 // The caller is responsible for "Use"ing ns/db after calling this function
 // Use connectAndUse if you want to connect and use a specific database right away.
 func (s *Server) connect(ctx context.Context, cfg config) (*surrealdb.DB, error) {
-	db, err := surrealdb.FromEndpointURLString(ctx, cfg.url)
+	db, err := s.dialWithRetry(ctx, cfg.url)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to SurrealDB: %w", err)
+		return nil, err
 	}
 
 	token := cfg.token
 
 	if token == "" {
 		if err := s.signIn(ctx, db, cfg); err != nil {
+			s.closeDB(ctx, db)
 			return nil, fmt.Errorf("failed to sign in to SurrealDB: %w", err)
 		}
 		return db, nil
@@ -39,6 +40,7 @@ func (s *Server) connect(ctx context.Context, cfg config) (*surrealdb.DB, error)
 	// Just for anyone reading this, by HTTP and WebSocket endpoints, I mean `http://localhost:8000/rpc` and `ws://localhost:8000/rpc`
 	// respectively.
 	if err := db.Authenticate(ctx, token); err != nil {
+		s.closeDB(ctx, db)
 		if isTokenExpiredError(err) {
 			return nil, fmt.Errorf("%w: %v", ErrTokenExpired, err)
 		}
@@ -94,6 +96,7 @@ func (s *Server) connectAndUse(ctx context.Context, cfg config, schema string) (
 	// you'll notice Fivetran calls our RPCs like `hey, create a table named <schema>.<table>`,
 	// and we interpret it as `ok let's create a table <table> in database <schema>`.
 	if err := db.Use(ctx, cfg.ns, schema); err != nil {
+		s.closeDB(ctx, db)
 		return nil, fmt.Errorf("failed to use namespace %s: %w", cfg.ns, err)
 	}
 

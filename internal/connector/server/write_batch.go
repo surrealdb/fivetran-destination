@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -28,33 +27,12 @@ func (s *Server) writeBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb
 
 	cfg, err := s.parseConfig(req.Configuration)
 	if err != nil {
-		return &pb.WriteBatchResponse{
-			Response: &pb.WriteBatchResponse_Warning{
-				Warning: &pb.Warning{
-					Message: fmt.Sprintf("failed parsing write batch config: %v", err.Error()),
-				},
-			},
-		}, err
+		return s.batchFailure("WriteBatch", fmt.Errorf("failed parsing write batch config: %w", err))
 	}
 
 	db, err := s.connectAndUse(ctx, cfg, req.SchemaName)
 	if err != nil {
-		// Check for token expiration - return Task instead of Warning
-		if errors.Is(err, ErrTokenExpired) {
-			s.LogSevere("Authentication token expired", err, "schema", req.SchemaName)
-			return &pb.WriteBatchResponse{
-				Response: &pb.WriteBatchResponse_Task{
-					Task: NewTokenExpiredTask(),
-				},
-			}, err
-		}
-		return &pb.WriteBatchResponse{
-			Response: &pb.WriteBatchResponse_Warning{
-				Warning: &pb.Warning{
-					Message: err.Error(),
-				},
-			},
-		}, err
+		return s.batchFailure("WriteBatch", err)
 	}
 	defer func() {
 		if err := db.Close(ctx); err != nil {
@@ -68,13 +46,7 @@ func (s *Server) writeBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb
 
 	tb, err := s.infoForTable(ctx, req.SchemaName, req.Table.Name, req.Configuration)
 	if err != nil {
-		return &pb.WriteBatchResponse{
-			Response: &pb.WriteBatchResponse_Warning{
-				Warning: &pb.Warning{
-					Message: err.Error(),
-				},
-			},
-		}, err
+		return s.batchFailure("WriteBatch", err)
 	}
 
 	fields := make(map[string]tablemapper.ColumnInfo)
@@ -83,33 +55,15 @@ func (s *Server) writeBatch(ctx context.Context, req *pb.WriteBatchRequest) (*pb
 	}
 
 	if err := s.handleReplaceFiles(ctx, db, fields, req.ReplaceFiles, req.FileParams, req.Keys, req.Table); err != nil {
-		return &pb.WriteBatchResponse{
-			Response: &pb.WriteBatchResponse_Warning{
-				Warning: &pb.Warning{
-					Message: err.Error(),
-				},
-			},
-		}, err
+		return s.batchFailure("WriteBatch", err)
 	}
 
 	if err := s.batchUpdate(ctx, db, fields, req); err != nil {
-		return &pb.WriteBatchResponse{
-			Response: &pb.WriteBatchResponse_Warning{
-				Warning: &pb.Warning{
-					Message: err.Error(),
-				},
-			},
-		}, err
+		return s.batchFailure("WriteBatch", err)
 	}
 
 	if err := s.batchDelete(ctx, db, fields, req); err != nil {
-		return &pb.WriteBatchResponse{
-			Response: &pb.WriteBatchResponse_Warning{
-				Warning: &pb.Warning{
-					Message: err.Error(),
-				},
-			},
-		}, err
+		return s.batchFailure("WriteBatch", err)
 	}
 
 	return &pb.WriteBatchResponse{

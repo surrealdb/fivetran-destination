@@ -215,8 +215,7 @@ func TestServerTest_FailureInvalidCredentials(t *testing.T) {
 		},
 	})
 
-	// The Test method returns both a failure response and an error
-	require.Error(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, resp)
 	failure, ok := resp.Response.(*pb.TestResponse_Failure)
 	require.True(t, ok, "Expected failure response for invalid credentials")
@@ -237,8 +236,7 @@ func TestServerTest_FailureInvalidURL(t *testing.T) {
 		},
 	})
 
-	// The Test method returns both a failure response and an error
-	require.Error(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, resp)
 	failure, ok := resp.Response.(*pb.TestResponse_Failure)
 	require.True(t, ok, "Expected failure response for invalid URL")
@@ -259,8 +257,7 @@ func TestServerTest_FailureMissingURL(t *testing.T) {
 		},
 	})
 
-	// The Test method returns both a failure response and an error
-	require.Error(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, resp)
 	failure, ok := resp.Response.(*pb.TestResponse_Failure)
 	require.True(t, ok, "Expected failure response for missing URL")
@@ -282,8 +279,7 @@ func TestServerTest_FailureMissingNamespace(t *testing.T) {
 		},
 	})
 
-	// The Test method returns both a failure response and an error
-	require.Error(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, resp)
 	failure, ok := resp.Response.(*pb.TestResponse_Failure)
 	require.True(t, ok, "Expected failure response for missing namespace")
@@ -304,8 +300,7 @@ func TestServerTest_FailureMissingCredentials(t *testing.T) {
 		},
 	})
 
-	// The Test method returns both a failure response and an error
-	require.Error(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, resp)
 	failure, ok := resp.Response.(*pb.TestResponse_Failure)
 	require.True(t, ok, "Expected failure response for missing credentials")

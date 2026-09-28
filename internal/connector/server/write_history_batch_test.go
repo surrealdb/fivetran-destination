@@ -908,12 +908,11 @@ func TestWriteHistoryBatch_FailureInvalidConfig(t *testing.T) {
 		FileParams:    testframework.GetTestFileParams(),
 	})
 
-	// Should fail
-	require.Error(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, batchResp)
-	warning, ok := batchResp.Response.(*pb.WriteBatchResponse_Warning)
-	require.True(t, ok, "Expected WriteHistoryBatch warning response")
-	require.NotEmpty(t, warning.Warning)
+	task, ok := batchResp.Response.(*pb.WriteBatchResponse_Task)
+	require.True(t, ok, "Expected WriteHistoryBatch task response")
+	require.NotEmpty(t, task.Task.Message)
 }
 
 func TestWriteHistoryBatch_FailureTableNotExists(t *testing.T) {
@@ -944,12 +943,11 @@ func TestWriteHistoryBatch_FailureTableNotExists(t *testing.T) {
 		FileParams:    testframework.GetTestFileParams(),
 	})
 
-	// Should fail
-	require.Error(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, batchResp)
-	warning, ok := batchResp.Response.(*pb.WriteBatchResponse_Warning)
-	require.True(t, ok, "Expected WriteHistoryBatch warning response")
-	require.NotEmpty(t, warning.Warning)
+	task, ok := batchResp.Response.(*pb.WriteBatchResponse_Task)
+	require.True(t, ok, "Expected WriteHistoryBatch task response")
+	require.NotEmpty(t, task.Task.Message)
 }
 
 func TestWriteHistoryBatch_FailureInvalidEncryptionKey(t *testing.T) {
@@ -991,12 +989,11 @@ func TestWriteHistoryBatch_FailureInvalidEncryptionKey(t *testing.T) {
 		FileParams:    testframework.GetTestFileParams(),
 	})
 
-	// Should fail
-	require.Error(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, batchResp)
-	warning, ok := batchResp.Response.(*pb.WriteBatchResponse_Warning)
-	require.True(t, ok, "Expected WriteHistoryBatch warning response")
-	require.NotEmpty(t, warning.Warning)
+	task, ok := batchResp.Response.(*pb.WriteBatchResponse_Task)
+	require.True(t, ok, "Expected WriteHistoryBatch task response")
+	require.NotEmpty(t, task.Task.Message)
 }
 
 func TestWriteHistoryBatch_FailureFileNotFound(t *testing.T) {
@@ -1029,12 +1026,11 @@ func TestWriteHistoryBatch_FailureFileNotFound(t *testing.T) {
 		FileParams:    testframework.GetTestFileParams(),
 	})
 
-	// Should fail
-	require.Error(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, batchResp)
-	warning, ok := batchResp.Response.(*pb.WriteBatchResponse_Warning)
-	require.True(t, ok, "Expected WriteHistoryBatch warning response")
-	require.NotEmpty(t, warning.Warning)
+	task, ok := batchResp.Response.(*pb.WriteBatchResponse_Task)
+	require.True(t, ok, "Expected WriteHistoryBatch task response")
+	require.NotEmpty(t, task.Task.Message)
 }
 
 func TestWriteHistoryBatch_FailureMissingFivetranIdOnlyInCSV(t *testing.T) {
@@ -1079,12 +1075,11 @@ func TestWriteHistoryBatch_FailureMissingFivetranIdOnlyInCSV(t *testing.T) {
 		FileParams:    testframework.GetTestFileParams(),
 	})
 
-	// Should fail
-	require.Error(t, err)
+	require.NoError(t, err)
 	require.NotNil(t, batchResp)
-	warning, ok := batchResp.Response.(*pb.WriteBatchResponse_Warning)
-	require.True(t, ok, "Expected WriteHistoryBatch warning response")
-	require.NotEmpty(t, warning.Warning)
+	task, ok := batchResp.Response.(*pb.WriteBatchResponse_Task)
+	require.True(t, ok, "Expected WriteHistoryBatch task response")
+	require.NotEmpty(t, task.Task.Message)
 }
 
 func TestWriteHistoryBatch_ReplaceUpdateDelete(t *testing.T) {
