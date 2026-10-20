@@ -3,7 +3,7 @@ module github.com/surrealdb/fivetran-destination
 go 1.27.1
 
 require (
-	github.com/klauspost/compress v1.18.0
+	github.com/klauspost/compress v1.18.7
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.10.0
 	github.com/surrealdb/surrealdb.go v1.0.0
